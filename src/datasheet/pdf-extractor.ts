@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { sep as pathSeparator } from "node:path";
 import { fileURLToPath } from "node:url";
 import { AppError, ERROR_CODES } from "../core/error.js";
 import type {
@@ -51,6 +52,17 @@ interface PdfJsModule {
 }
 
 const PDFJS_MODULE_PATH = "../vendor/pdfjs/pdf.mjs";
+
+export function normalizePdfJsFactoryDirectory(
+  directoryPath: string,
+  separator = pathSeparator
+): string {
+  const normalized =
+    separator === "\\"
+      ? directoryPath.replaceAll("\\", "/")
+      : directoryPath;
+  return normalized.endsWith("/") ? normalized : `${normalized}/`;
+}
 
 class TextOnlyDomMatrix {
   public a = 1;
@@ -361,8 +373,10 @@ export async function extractPdf(
     disableFontFace: true,
     useSystemFonts: false,
     useWasm: false,
-    standardFontDataUrl: fileURLToPath(
-      new URL("../vendor/pdfjs/standard_fonts/", import.meta.url)
+    standardFontDataUrl: normalizePdfJsFactoryDirectory(
+      fileURLToPath(
+        new URL("../vendor/pdfjs/standard_fonts/", import.meta.url)
+      )
     )
   });
   try {

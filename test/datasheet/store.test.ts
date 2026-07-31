@@ -5,7 +5,10 @@ import path from "node:path";
 import test from "node:test";
 import { enforcesPosixModes } from "../../src/core/filesystem-security.js";
 import { AppError, ERROR_CODES } from "../../src/core/error.js";
-import { extractPdf } from "../../src/datasheet/pdf-extractor.js";
+import {
+  extractPdf,
+  normalizePdfJsFactoryDirectory
+} from "../../src/datasheet/pdf-extractor.js";
 import { DatasheetStoreQueryIndex } from "../../src/datasheet/query-index.js";
 import {
   importDocumentReference,
@@ -71,6 +74,23 @@ function outlinedPdf(firstText: string, secondText: string): Buffer {
   output += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R /Info 11 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
   return Buffer.from(output, "ascii");
 }
+
+test("PDF.js 字体目录在 Windows 上使用正斜杠并保留尾随斜杠", () => {
+  assert.equal(
+    normalizePdfJsFactoryDirectory(
+      "D:\\a\\SchemCP\\dist\\src\\vendor\\pdfjs\\standard_fonts\\",
+      "\\"
+    ),
+    "D:/a/SchemCP/dist/src/vendor/pdfjs/standard_fonts/"
+  );
+  assert.equal(
+    normalizePdfJsFactoryDirectory(
+      "/opt/schemcp/dist/src/vendor/pdfjs/standard_fonts",
+      "/"
+    ),
+    "/opt/schemcp/dist/src/vendor/pdfjs/standard_fonts/"
+  );
+});
 
 async function fixture(): Promise<{
   readonly storePath: string;
