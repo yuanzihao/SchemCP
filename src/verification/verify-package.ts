@@ -47,6 +47,11 @@ interface SyntheticAttachmentSet {
   readonly rightNetlist: string;
 }
 
+interface CommandInvocation {
+  readonly command: string;
+  readonly prefixArgs: readonly string[];
+}
+
 const CRC32_TABLE = (() => {
   const table = new Uint32Array(256);
   for (let index = 0; index < table.length; index += 1) {
@@ -292,6 +297,22 @@ async function run(
   return result.stdout;
 }
 
+function resolveNpmInvocation(env: NodeJS.ProcessEnv): CommandInvocation {
+  const npmExecPath = env.npm_execpath;
+  if (npmExecPath !== undefined && path.isAbsolute(npmExecPath)) {
+    return {
+      command: process.execPath,
+      prefixArgs: [npmExecPath]
+    };
+  }
+  assert.notEqual(
+    process.platform,
+    "win32",
+    "Windows 安装包校验必须通过 npm 脚本提供绝对 npm_execpath"
+  );
+  return { command: "npm", prefixArgs: [] };
+}
+
 function parsePackReceipt(stdout: string): PackReceipt {
   const parsed = JSON.parse(stdout) as unknown;
   assert.equal(Array.isArray(parsed), true, "npm pack --json 必须返回数组");
@@ -411,6 +432,7 @@ async function main(): Promise<void> {
     npm_config_audit: "false",
     npm_config_fund: "false"
   };
+  const npm = resolveNpmInvocation(env);
 
   try {
     await Promise.all([
@@ -421,16 +443,28 @@ async function main(): Promise<void> {
     const syntheticAttachments = await createSyntheticAttachments(temporaryRoot);
     const firstReceipt = parsePackReceipt(
       await run(
-        process.platform === "win32" ? "npm.cmd" : "npm",
-        ["pack", "--json", "--pack-destination", firstPackDirectory],
+        npm.command,
+        [
+          ...npm.prefixArgs,
+          "pack",
+          "--json",
+          "--pack-destination",
+          firstPackDirectory
+        ],
         root,
         env
       )
     );
     const secondReceipt = parsePackReceipt(
       await run(
-        process.platform === "win32" ? "npm.cmd" : "npm",
-        ["pack", "--json", "--pack-destination", secondPackDirectory],
+        npm.command,
+        [
+          ...npm.prefixArgs,
+          "pack",
+          "--json",
+          "--pack-destination",
+          secondPackDirectory
+        ],
         root,
         env
       )
@@ -448,28 +482,46 @@ async function main(): Promise<void> {
     const tarballSha256 = createHash("sha256").update(firstBytes).digest("hex");
 
     await run(
-      process.platform === "win32" ? "npm.cmd" : "npm",
-      ["install", "--offline", "--ignore-scripts", firstTarball],
+      npm.command,
+      [
+        ...npm.prefixArgs,
+        "install",
+        "--offline",
+        "--ignore-scripts",
+        firstTarball
+      ],
       installDirectory,
       env
     );
-    await assertInstalledPackagePrivacy(
-      path.join(installDirectory, "node_modules", "@yuanzihao", "schemcp"),
-      [root, temporaryRoot]
-    );
-    const executable = path.join(
+    const packageRoot = path.join(
       installDirectory,
       "node_modules",
-      ".bin",
-      process.platform === "win32" ? "schemcp.cmd" : "schemcp"
+      "@yuanzihao",
+      "schemcp"
     );
-    const version = (await run(executable, ["--version"], installDirectory, env)).trim();
+    await assertInstalledPackagePrivacy(packageRoot, [root, temporaryRoot]);
+    const executable = path.join(
+      packageRoot,
+      "dist",
+      "src",
+      "bin",
+      "schemcp.js"
+    );
+    const executableArgs = [executable];
+    const version = (
+      await run(
+        process.execPath,
+        [...executableArgs, "--version"],
+        installDirectory,
+        env
+      )
+    ).trim();
     assert.equal(version, "0.1.0");
 
     const generic = JSON.parse(
       await run(
-        executable,
-        ["mcp-config", "--client", "generic"],
+        process.execPath,
+        [...executableArgs, "mcp-config", "--client", "generic"],
         installDirectory,
         env
       )
@@ -492,8 +544,8 @@ async function main(): Promise<void> {
     await Promise.all(
       ["codex", "claude-code"].map(async (client) => {
         const output = await run(
-          executable,
-          ["mcp-config", "--client", client],
+          process.execPath,
+          [...executableArgs, "mcp-config", "--client", client],
           installDirectory,
           env
         );
@@ -502,8 +554,8 @@ async function main(): Promise<void> {
     );
 
     const transport = new StdioClientTransport({
-      command: executable,
-      args: [],
+      command: process.execPath,
+      args: executableArgs,
       cwd: installDirectory,
       env: {
         ...getDefaultEnvironment(),
