@@ -1,0 +1,99 @@
+{
+  "name": "@yuanzihao/schemcp",
+  "version": "0.1.0",
+  "description": "Local-first, deterministic and auditable schematic context MCP server for JLCEDA Pro projects",
+  "author": "yuanzihao",
+  "license": "Apache-2.0",
+  "mcpName": "io.github.yuanzihao/schemcp",
+  "homepage": "https://github.com/yuanzihao/SchemCP#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yuanzihao/SchemCP.git"
+  },
+  "bugs": {
+    "url": "https://github.com/yuanzihao/SchemCP/issues"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "schematic",
+    "eda",
+    "easyeda",
+    "jlc",
+    "local-first"
+  ],
+  "type": "module",
+  "files": [
+    "dist/src",
+    "README.md",
+    "README.en.md",
+    "LICENSE",
+    "CHANGELOG.md",
+    "CODE_OF_CONDUCT.md",
+    "CONTRIBUTING.md",
+    "SECURITY.md",
+    "THIRD_PARTY_NOTICES.md",
+    "server.json",
+    "docs/AI_CONTEXT_PACK.md",
+    "docs/DATASHEET_STORE.md",
+    "docs/GOLDEN_FIXTURES.md",
+    "docs/MCP_TOOLS.md",
+    "docs/mcp-tools.contract.json",
+    "docs/MCP_SERVICE.md",
+    "docs/PUBLISHING.md",
+    "docs/USER_GUIDE.md",
+    "docs/TRUTH_VALIDATION.md"
+  ],
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "bin": {
+    "schemcp": "./dist/src/bin/schemcp.js"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json && node scripts/copy-pdfjs-assets.mjs",
+    "check": "tsc -p tsconfig.json --noEmit",
+    "generate:mcp-reference": "npm run build && node scripts/generate-mcp-reference.mjs",
+    "generate:release-artifacts": "node scripts/generate-release-artifacts.mjs",
+    "generate:third-party-notices": "node scripts/generate-third-party-notices.mjs",
+    "test": "npm run build && node --test \"dist/test/**/*.test.js\"",
+    "test:coverage": "npm run build && c8 --clean --exclude=\"dist/test/**\" --exclude=\"dist/src/vendor/**\" --reporter=text-summary --check-coverage --lines=90 --branches=80 --functions=90 node --test --test-reporter=dot \"dist/test/**/*.test.js\"",
+    "prepack": "npm run build && node scripts/verify-public-release.mjs --quiet",
+    "prepublishOnly": "npm run check && npm run test:coverage && npm run verify:public-release",
+    "inspect": "node dist/src/cli/main.js inspect",
+    "mcp": "node dist/src/mcp/main.js",
+    "verify:npx-tarball": "node scripts/verify-npx-tarball.mjs",
+    "verify:public-release": "node scripts/verify-public-release.mjs",
+    "verify:golden": "node dist/src/verification/verify-golden.js",
+    "verify:mcp": "node dist/src/verification/verify-mcp.js",
+    "verify:mcp-reference": "npm run build && node scripts/generate-mcp-reference.mjs --check",
+    "verify:third-party-notices": "node scripts/generate-third-party-notices.mjs --check",
+    "verify:package": "npm run build && node dist/src/verification/verify-package.js"
+  },
+  "dependencies": {
+    "@hono/node-server": "2.0.12",
+    "@modelcontextprotocol/sdk": "1.30.0",
+    "yauzl": "3.4.0",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.1",
+    "@types/yauzl": "3.4.0",
+    "c8": "12.0.0",
+    "pdfjs-dist": "6.1.200",
+    "typescript": "7.0.2"
+  },
+  "overrides": {
+    "@hono/node-server": "2.0.12"
+  },
+  "bundleDependencies": [
+    "@hono/node-server",
+    "@modelcontextprotocol/sdk",
+    "yauzl",
+    "zod"
+  ]
+}

@@ -1,0 +1,522 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import type {
+  EdaIr,
+  IrComponent,
+  IrRecordProvenance,
+  IrSchematicAnnotation,
+  IrSchematicTable,
+  IrSymbolText,
+  IrWire
+} from "../../src/ir/model.js";
+import { QueryError } from "../../src/query/index.js";
+import { ProjectVersionDiffIndex } from "../../src/query/project-version-diff.js";
+
+const PROVENANCE: IrRecordProvenance = {
+  documentId: "page-a",
+  documentType: "SCH_PAGE",
+  recordType: "COMPONENT",
+  recordId: "component-a",
+  ticket: 1,
+  client: "client",
+  entry: "epru",
+  line: 2
+};
+
+function component(
+  id: string,
+  designator: string,
+  x: number,
+  ticket = 1
+): IrComponent {
+  return {
+    id,
+    pageId: "page-a",
+    partId: "part-a",
+    position: { x, y: 2 },
+    rotation: 0,
+    mirrored: false,
+    designator,
+    symbolBinding: {
+      key: "Symbol",
+      state: "UNRESOLVED_DEVICE_REFERENCE_MISSING",
+      componentAttributes: []
+    },
+    footprintBinding: {
+      key: "Footprint",
+      state: "UNRESOLVED_DEVICE_REFERENCE_MISSING",
+      componentAttributes: []
+    },
+    attributes: [],
+    provenance: { ...PROVENANCE, recordId: id, ticket },
+    extensions: { easyeda: { ignoredVendorField: ticket } }
+  };
+}
+
+function wire(id: string, netName: string): IrWire {
+  return {
+    id,
+    pageId: "page-a",
+    explicitNetName: netName,
+    segments: [
+      {
+        id: `${id}:segment`,
+        start: { x: 0, y: 0 },
+        end: { x: 10, y: 0 },
+        provenance: {
+          ...PROVENANCE,
+          recordType: "LINE",
+          recordId: `${id}:segment`
+        },
+        extensions: { easyeda: {} }
+      }
+    ],
+    attributes: [],
+    provenance: {
+      ...PROVENANCE,
+      recordType: "WIRE",
+      recordId: id
+    },
+    extensions: { easyeda: {} }
+  };
+}
+
+function annotation(id: string, text: string): IrSchematicAnnotation {
+  return {
+    id,
+    pageId: "page-a",
+    text,
+    contentState: text === "" ? "EXPLICIT_EMPTY" : "EXPLICIT_TEXT",
+    position: { x: 1, y: 2 },
+    rotation: 0,
+    coordinateSemantics: "EASYEDA_V3_SCHEMATIC_RAW_UNCONVERTED",
+    basis: "EXPLICIT_SCHEMATIC_TEXT_FIELDS",
+    sourceAuthenticity: "NOT_VERIFIED",
+    semanticInterpretation: "NOT_PERFORMED",
+    electricalTruth: "NOT_APPLICABLE",
+    provenance: {
+      ...PROVENANCE,
+      recordType: "TEXT",
+      recordId: id
+    },
+    extensions: { easyeda: {} }
+  };
+}
+
+function schematicTable(id: string, value: string): IrSchematicTable {
+  return {
+    id,
+    documentId: "page-a",
+    documentType: "SCHEMATIC_PAGE",
+    partBinding: { state: "NOT_APPLICABLE" },
+    position: { x: 1, y: 2 },
+    rowSizes: [10],
+    columnSizes: [20],
+    rowLocked: [false],
+    columnLocked: [false],
+    lockEncoding: "INTEGER_0_1",
+    rotation: 0,
+    cells: [
+      {
+        id: `${id}-cell`,
+        value,
+        contentState: value === "" ? "EXPLICIT_EMPTY" : "EXPLICIT_TEXT",
+        rowIndex: 0,
+        columnIndex: 0,
+        rowSpan: 1,
+        columnSpan: 1,
+        representation: "V3_INLINE_TABLE_CELL",
+        semanticInterpretation: "NOT_PERFORMED",
+        electricalTruth: "NOT_APPLICABLE",
+        provenance: [
+          {
+            ...PROVENANCE,
+            recordType: "TABLE",
+            recordId: id
+          }
+        ],
+        extensions: { easyeda: {} }
+      }
+    ],
+    coordinateSemantics: "EASYEDA_V3_SCHEMATIC_RAW_UNCONVERTED",
+    layoutValidation: "INDEX_AND_SPAN_BOUNDS_VALIDATED",
+    basis: "EXPLICIT_SCHEMATIC_TABLE_AND_CELL_FIELDS",
+    sourceAuthenticity: "NOT_VERIFIED",
+    semanticInterpretation: "NOT_PERFORMED",
+    electricalTruth: "NOT_APPLICABLE",
+    provenance: {
+      ...PROVENANCE,
+      recordType: "TABLE",
+      recordId: id
+    },
+    extensions: { easyeda: {} }
+  };
+}
+
+function symbolText(id: string, text: string): IrSymbolText {
+  return {
+    id,
+    symbolId: "symbol-a",
+    partId: "part-a",
+    partBinding: { state: "RESOLVED_EXACT", targetId: "part-a" },
+    text,
+    contentState: text === "" ? "EXPLICIT_EMPTY" : "EXPLICIT_TEXT",
+    position: { x: 1, y: 2 },
+    rotation: 0,
+    coordinateSemantics: "EASYEDA_V3_SCHEMATIC_RAW_UNCONVERTED",
+    basis: "EXPLICIT_SYMBOL_TEXT_FIELDS",
+    sourceAuthenticity: "NOT_VERIFIED",
+    semanticInterpretation: "NOT_PERFORMED",
+    electricalTruth: "NOT_APPLICABLE",
+    provenance: {
+      ...PROVENANCE,
+      documentId: "symbol-a",
+      documentType: "SYMBOL",
+      recordType: "TEXT",
+      recordId: id
+    },
+    extensions: { easyeda: {} }
+  };
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+function ir(
+  options: {
+    readonly components?: readonly IrComponent[];
+    readonly wires?: readonly IrWire[];
+    readonly schematicAnnotations?: readonly IrSchematicAnnotation[];
+    readonly schematicTables?: readonly IrSchematicTable[];
+    readonly symbolTexts?: readonly IrSymbolText[];
+    readonly irSha256?: string;
+    readonly archiveSha256?: string;
+  } = {}
+): EdaIr {
+  const components = options.components ?? [];
+  const wires = options.wires ?? [];
+  const schematicAnnotations = options.schematicAnnotations ?? [];
+  const schematicTables = options.schematicTables ?? [];
+  const symbolTexts = options.symbolTexts ?? [];
+  return {
+    schema: "schemcp.eda-ir",
+    schemaVersion: "1.0.0",
+    generator: {
+      name: "@yuanzihao/schemcp",
+      version: "0.1.0"
+    },
+    source: {
+      format: "EASYEDA_V3_LOG",
+      archiveSha256: options.archiveSha256 ?? "a".repeat(64),
+      reducedStateSha256: "b".repeat(64),
+      electricalTruth: "NOT_VERIFIED"
+    },
+    documents: [],
+    projectConfigurations: [],
+    boards: [],
+    schematics: [],
+    schematicPages: [],
+    schematicAnnotations,
+    schematicGraphicPrimitives: [],
+    schematicTables,
+    variants: [],
+    componentGroups: [],
+    instanceContexts: [],
+    components,
+    symbols: [],
+    symbolParts: [],
+    symbolTexts,
+    symbolPins: [],
+    devices: [],
+    wires,
+    pinInstances: [],
+    shortRelations: [],
+    networkEndpointCandidates: [],
+    unboundAttributes: [],
+    unmodeledRecords: [],
+    diagnostics: [],
+    summary: {
+      components: components.length,
+      componentsWithDesignator: components.filter(
+        (item) => item.designator !== undefined
+      ).length,
+      wires: wires.length,
+      wiresWithExplicitNet: wires.filter(
+        (item) => item.explicitNetName !== undefined
+      ).length,
+      schematicAnnotations: schematicAnnotations.length,
+      schematicTables: schematicTables.length,
+      symbolTexts: symbolTexts.length,
+    } as EdaIr["summary"],
+    irSha256: options.irSha256 ?? "c".repeat(64)
+  };
+}
+
+test("工程差异覆盖摘要、组件和显式网络且不把来源位置当作语义变化", () => {
+  const baseline = ir({
+    components: [component("component-a", "R1", 1, 1)]
+  });
+  const current = ir({
+    components: [
+      component("component-a", "R1", 5, 99),
+      component("component-b", "R2", 8)
+    ],
+    wires: [wire("wire-a", "VCC")],
+    irSha256: "d".repeat(64),
+    archiveSha256: "e".repeat(64)
+  });
+  const index = new ProjectVersionDiffIndex(baseline, current);
+
+  assert.equal(index.summary.status, "CHANGES_FOUND");
+  assert.equal(index.summary.projectContinuity, "NOT_VERIFIED");
+  assert.equal(index.summary.electricalTruth, "NOT_VERIFIED");
+  assert.equal(index.summary.byEntityKind.COMPONENT.added, 1);
+  assert.equal(index.summary.byEntityKind.COMPONENT.modified, 1);
+  assert.equal(index.summary.byEntityKind.WIRE.added, 1);
+  assert.equal(index.summary.byEntityKind.EXPLICIT_NET.added, 1);
+
+  const modified = index.listChanges({
+    entityKind: "COMPONENT",
+    changeType: "MODIFIED"
+  });
+  assert.equal(modified.total, 1);
+  assert.equal(modified.items[0]?.entityId, "component-a");
+  assert.deepEqual(modified.items[0]?.changedFields, ["position"]);
+  assert.equal("beforeValue" in (modified.items[0] ?? {}), false);
+
+  const summaryChanges = index.listChanges({
+    entityKind: "SUMMARY_METRIC"
+  });
+  assert.equal(summaryChanges.total, 4);
+  assert.deepEqual(
+    summaryChanges.items.map((item) => [
+      item.entityId,
+      item.beforeValue,
+      item.afterValue
+    ]),
+    [
+      ["components", 1, 2],
+      ["componentsWithDesignator", 1, 2],
+      ["wires", 0, 1],
+      ["wiresWithExplicitNet", 0, 1]
+    ]
+  );
+});
+
+test("只有 provenance 和 extensions 变化时保持无语义差异", () => {
+  const baseline = ir({
+    components: [component("component-a", "R1", 1, 1)]
+  });
+  const current = ir({
+    components: [component("component-a", "R1", 1, 999)],
+    irSha256: "d".repeat(64),
+    archiveSha256: "e".repeat(64)
+  });
+  const index = new ProjectVersionDiffIndex(baseline, current);
+  assert.equal(index.summary.status, "NO_CHANGES");
+  assert.equal(index.listChanges().total, 0);
+});
+
+test("同一实体新增可选字段时显式报告字段变化", () => {
+  const baselineComponent = component("component-a", "R1", 1);
+  const currentComponent: IrComponent = {
+    ...baselineComponent,
+    deviceId: "device-a"
+  };
+  const index = new ProjectVersionDiffIndex(
+    ir({ components: [baselineComponent] }),
+    ir({
+      components: [currentComponent],
+      irSha256: "d".repeat(64)
+    })
+  );
+  const changes = index.listChanges({
+    entityKind: "COMPONENT",
+    changeType: "MODIFIED"
+  });
+  assert.equal(changes.total, 1);
+  assert.deepEqual(changes.items[0]?.changedFields, ["deviceId"]);
+});
+
+
+
+test("工程差异覆盖显式原理图注释但不比较来源扩展", () => {
+  const baselineAnnotation = annotation("annotation-a", "Power input");
+  const currentAnnotation = {
+    ...annotation("annotation-a", "Power input updated"),
+    provenance: {
+      ...annotation("annotation-a", "Power input updated").provenance,
+      ticket: 99
+    },
+    extensions: { easyeda: { vendorOnly: true } }
+  };
+  const index = new ProjectVersionDiffIndex(
+    ir({ schematicAnnotations: [baselineAnnotation] }),
+    ir({
+      schematicAnnotations: [
+        currentAnnotation,
+        annotation("annotation-b", "UART debug")
+      ],
+      irSha256: "d".repeat(64)
+    })
+  );
+  assert.equal(
+    index.summary.byEntityKind.SCHEMATIC_ANNOTATION.modified,
+    1
+  );
+  assert.equal(index.summary.byEntityKind.SCHEMATIC_ANNOTATION.added, 1);
+  const modified = index.listChanges({
+    entityKind: "SCHEMATIC_ANNOTATION",
+    changeType: "MODIFIED"
+  });
+  assert.deepEqual(modified.items[0]?.changedFields, ["text"]);
+});
+
+test("工程差异把原理图表格元数据与单元格拆成独立实体", () => {
+  const baseline = schematicTable("table-a", "BOOT0");
+  const current = {
+    ...schematicTable("table-a", "BOOT1"),
+    position: { x: 5, y: 2 }
+  };
+  const index = new ProjectVersionDiffIndex(
+    ir({ schematicTables: [baseline] }),
+    ir({
+      schematicTables: [current],
+      irSha256: "d".repeat(64)
+    })
+  );
+  assert.equal(index.summary.byEntityKind.SCHEMATIC_TABLE.modified, 1);
+  assert.equal(index.summary.byEntityKind.SCHEMATIC_TABLE_CELL.modified, 1);
+  const tableChanges = index.listChanges({
+    entityKind: "SCHEMATIC_TABLE",
+    changeType: "MODIFIED"
+  });
+  assert.deepEqual(tableChanges.items[0]?.changedFields, ["position"]);
+  const cellChanges = index.listChanges({
+    entityKind: "SCHEMATIC_TABLE_CELL",
+    changeType: "MODIFIED"
+  });
+  assert.deepEqual(cellChanges.items[0]?.changedFields, ["value"]);
+});
+
+test("工程差异覆盖符号显式文字但不比较来源扩展", () => {
+  const baseline = symbolText("text-a", "UART_TX");
+  const current = {
+    ...symbolText("text-a", "UART_TX updated"),
+    provenance: {
+      ...symbolText("text-a", "UART_TX updated").provenance,
+      ticket: 99
+    },
+    extensions: { easyeda: { vendorOnly: true } }
+  };
+  const index = new ProjectVersionDiffIndex(
+    ir({ symbolTexts: [baseline] }),
+    ir({
+      symbolTexts: [current, symbolText("text-b", "Power")],
+      irSha256: "d".repeat(64)
+    })
+  );
+  assert.equal(index.summary.byEntityKind.SYMBOL_TEXT.modified, 1);
+  assert.equal(index.summary.byEntityKind.SYMBOL_TEXT.added, 1);
+  const modified = index.listChanges({
+    entityKind: "SYMBOL_TEXT",
+    changeType: "MODIFIED"
+  });
+  assert.deepEqual(modified.items[0]?.changedFields, ["text"]);
+});
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+test("重复局部键按语义排序配对，不会因输入顺序产生伪差异", () => {
+  const first = component("duplicate", "R1", 1);
+  const second = component("duplicate", "R2", 2);
+  const index = new ProjectVersionDiffIndex(
+    ir({ components: [first, second] }),
+    ir({ components: [second, first], irSha256: "d".repeat(64) })
+  );
+  assert.equal(index.summary.status, "NO_CHANGES");
+  assert.equal(index.summary.byEntityKind.COMPONENT.unchanged, 2);
+});
+
+test("差异分页 cursor 与筛选域绑定并限制页大小", () => {
+  const index = new ProjectVersionDiffIndex(
+    ir(),
+    ir({
+      components: [
+        component("component-a", "R1", 1),
+        component("component-b", "R2", 2)
+      ]
+    })
+  );
+  const first = index.listChanges({
+    entityKind: "COMPONENT",
+    limit: 1
+  });
+  assert.equal(first.total, 2);
+  const cursor = first.nextCursor;
+  assert.ok(cursor);
+  assert.equal(
+    index.listChanges({
+      entityKind: "COMPONENT",
+      limit: 1,
+      cursor
+    }).items[0]?.entityId,
+    "component-b"
+  );
+  assert.throws(
+    () =>
+      index.listChanges({
+        entityKind: "WIRE",
+        limit: 1,
+        cursor
+      }),
+    (error: unknown) =>
+      error instanceof QueryError && error.code === "QUERY_INVALID_CURSOR"
+  );
+  assert.throws(
+    () => index.listChanges({ limit: 51 }),
+    (error: unknown) =>
+      error instanceof QueryError && error.code === "QUERY_INVALID_LIMIT"
+  );
+});

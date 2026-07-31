@@ -1,0 +1,82 @@
+name: Build release candidate
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "main commit or existing v* tag to verify"
+        required: true
+        default: "main"
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  release-candidate:
+    runs-on: ubuntu-latest
+    environment: release
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          fetch-depth: 0
+          ref: ${{ inputs.ref }}
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: "24"
+          package-manager-cache: false
+      - name: Pin release npm CLI
+        run: npm install --global npm@11.5.1
+      - name: Verify candidate belongs to main
+        id: candidate
+        shell: bash
+        run: |
+          git fetch --force origin main --tags
+          git merge-base --is-ancestor HEAD origin/main
+          PACKAGE_VERSION="$(node -p "require('./package.json').version")"
+          SERVER_VERSION="$(node -p "require('./server.json').version")"
+          test "${PACKAGE_VERSION}" = "${SERVER_VERSION}"
+          if [[ "${{ inputs.ref }}" == v* ]]; then
+            test "${{ inputs.ref }}" = "v${PACKAGE_VERSION}"
+            test "$(git rev-parse "${{ inputs.ref }}^{commit}")" = "$(git rev-parse HEAD)"
+          fi
+          echo "source_date_epoch=$(git show -s --format=%ct HEAD)" >> "${GITHUB_OUTPUT}"
+      - run: npm ci
+      - run: npm run check
+      - run: npm run test:coverage
+      - run: npm run verify:mcp-reference
+      - run: npm run verify:third-party-notices
+      - run: npm run verify:public-release
+      - run: npm run verify:package
+      - name: Validate MCP Registry metadata with fixed publisher
+        shell: bash
+        run: |
+          curl --fail --location --silent --show-error \
+            --output mcp-publisher.tar.gz \
+            "https://github.com/modelcontextprotocol/registry/releases/download/v1.7.9/mcp-publisher_linux_amd64.tar.gz"
+          echo "ab128162b0616090b47cf245afe0a23f3ef08936fdce19074f5ba0a4469281ac  mcp-publisher.tar.gz" | sha256sum --check
+          tar xzf mcp-publisher.tar.gz mcp-publisher
+          chmod 0755 mcp-publisher
+          ./mcp-publisher --version
+          ./mcp-publisher validate server.json
+      - name: Build deterministic release candidate
+        shell: bash
+        env:
+          SOURCE_DATE_EPOCH: ${{ steps.candidate.outputs.source_date_epoch }}
+        run: |
+          mkdir release
+          npm pack --json --pack-destination release > release/pack-receipt.json
+          TARBALL="$(node -p "'release/' + require('./release/pack-receipt.json')[0].filename")"
+          node scripts/generate-release-artifacts.mjs --output release --tarball "${TARBALL}"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: schemcp-release-candidate
+          path: |
+            release/*.tgz
+            release/*.sha256
+            release/sbom.cdx.json
+            release/sbom.spdx.json
+            release/THIRD_PARTY_NOTICES.md
+            release/verification-receipt.json
+          if-no-files-found: error
+          compression-level: 0

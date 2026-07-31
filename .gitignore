@@ -1,0 +1,31 @@
+node_modules/
+dist/
+coverage/
+.release-artifacts/
+.DS_Store
+
+# 真实 EDA 工程与本地解析产物禁止提交
+*.epro2
+*.epro
+*.epru
+*.enet
+*.eda-ir.json
+*.ai-context/
+*.truth-capture/
+*.truth-evidence/
+*.netlist-comparison.json
+*.datasheets/
+*.datasheet-store/
+.eda-datasheets/
+.eda-lab/
+artifacts/private/
+fixtures/private/
+
+# 本地日志与临时文件
+*.log
+*.tmp
+*.tgz
+
+# 本机 MCP 体验配置包含绝对工程路径，不提交
+.codex/config.toml
+.mcp.json

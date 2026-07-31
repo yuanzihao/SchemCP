@@ -1,0 +1,31 @@
+name: 功能建议 / Feature request
+description: 建议原理图离线解析或 MCP 查询能力
+title: "[Feature] "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: 要解决的问题
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: 建议方案
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: 可确定性解析的证据来源
+      description: 说明它来自 .epro2、可选 .enet、器件资料还是工程推断。
+    validations:
+      required: true
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: 范围确认
+      options:
+        - label: 建议不要求 PCB、Chrome、Bridge、在线 API、工程写入或代码生成
+          required: true

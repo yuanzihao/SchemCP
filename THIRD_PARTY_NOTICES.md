@@ -1,0 +1,103 @@
+# Third-Party Notices
+
+SchemCP bundles the following production dependencies for offline installation.
+This inventory is generated deterministically from `package-lock.json`; consult each linked package for its complete license text and notices.
+
+| Package | Version | Declared license | Registry source |
+| --- | --- | --- | --- |
+| `@hono/node-server` | `2.0.12` | `MIT` | [npm tarball](https://registry.npmjs.org/@hono/node-server/-/node-server-2.0.12.tgz) |
+| `@modelcontextprotocol/sdk` | `1.30.0` | `MIT` | [npm tarball](https://registry.npmjs.org/@modelcontextprotocol/sdk/-/sdk-1.30.0.tgz) |
+| `accepts` | `2.0.0` | `MIT` | [npm tarball](https://registry.npmjs.org/accepts/-/accepts-2.0.0.tgz) |
+| `ajv` | `8.20.0` | `MIT` | [npm tarball](https://registry.npmjs.org/ajv/-/ajv-8.20.0.tgz) |
+| `ajv-formats` | `3.0.1` | `MIT` | [npm tarball](https://registry.npmjs.org/ajv-formats/-/ajv-formats-3.0.1.tgz) |
+| `body-parser` | `2.3.0` | `MIT` | [npm tarball](https://registry.npmjs.org/body-parser/-/body-parser-2.3.0.tgz) |
+| `bytes` | `3.1.2` | `MIT` | [npm tarball](https://registry.npmjs.org/bytes/-/bytes-3.1.2.tgz) |
+| `call-bind-apply-helpers` | `1.0.2` | `MIT` | [npm tarball](https://registry.npmjs.org/call-bind-apply-helpers/-/call-bind-apply-helpers-1.0.2.tgz) |
+| `call-bound` | `1.0.4` | `MIT` | [npm tarball](https://registry.npmjs.org/call-bound/-/call-bound-1.0.4.tgz) |
+| `content-disposition` | `1.1.0` | `MIT` | [npm tarball](https://registry.npmjs.org/content-disposition/-/content-disposition-1.1.0.tgz) |
+| `content-type` | `1.0.5` | `MIT` | [npm tarball](https://registry.npmjs.org/content-type/-/content-type-1.0.5.tgz) |
+| `content-type` | `2.0.0` | `MIT` | [npm tarball](https://registry.npmjs.org/content-type/-/content-type-2.0.0.tgz) |
+| `cookie` | `0.7.2` | `MIT` | [npm tarball](https://registry.npmjs.org/cookie/-/cookie-0.7.2.tgz) |
+| `cookie-signature` | `1.2.2` | `MIT` | [npm tarball](https://registry.npmjs.org/cookie-signature/-/cookie-signature-1.2.2.tgz) |
+| `cors` | `2.8.6` | `MIT` | [npm tarball](https://registry.npmjs.org/cors/-/cors-2.8.6.tgz) |
+| `cross-spawn` | `7.0.6` | `MIT` | [npm tarball](https://registry.npmjs.org/cross-spawn/-/cross-spawn-7.0.6.tgz) |
+| `debug` | `4.4.3` | `MIT` | [npm tarball](https://registry.npmjs.org/debug/-/debug-4.4.3.tgz) |
+| `depd` | `2.0.0` | `MIT` | [npm tarball](https://registry.npmjs.org/depd/-/depd-2.0.0.tgz) |
+| `dunder-proto` | `1.0.1` | `MIT` | [npm tarball](https://registry.npmjs.org/dunder-proto/-/dunder-proto-1.0.1.tgz) |
+| `ee-first` | `1.1.1` | `MIT` | [npm tarball](https://registry.npmjs.org/ee-first/-/ee-first-1.1.1.tgz) |
+| `encodeurl` | `2.0.0` | `MIT` | [npm tarball](https://registry.npmjs.org/encodeurl/-/encodeurl-2.0.0.tgz) |
+| `es-define-property` | `1.0.1` | `MIT` | [npm tarball](https://registry.npmjs.org/es-define-property/-/es-define-property-1.0.1.tgz) |
+| `es-errors` | `1.3.0` | `MIT` | [npm tarball](https://registry.npmjs.org/es-errors/-/es-errors-1.3.0.tgz) |
+| `es-object-atoms` | `1.1.2` | `MIT` | [npm tarball](https://registry.npmjs.org/es-object-atoms/-/es-object-atoms-1.1.2.tgz) |
+| `escape-html` | `1.0.3` | `MIT` | [npm tarball](https://registry.npmjs.org/escape-html/-/escape-html-1.0.3.tgz) |
+| `etag` | `1.8.1` | `MIT` | [npm tarball](https://registry.npmjs.org/etag/-/etag-1.8.1.tgz) |
+| `eventsource` | `3.0.7` | `MIT` | [npm tarball](https://registry.npmjs.org/eventsource/-/eventsource-3.0.7.tgz) |
+| `eventsource-parser` | `3.1.0` | `MIT` | [npm tarball](https://registry.npmjs.org/eventsource-parser/-/eventsource-parser-3.1.0.tgz) |
+| `express` | `5.2.1` | `MIT` | [npm tarball](https://registry.npmjs.org/express/-/express-5.2.1.tgz) |
+| `express-rate-limit` | `8.6.0` | `MIT` | [npm tarball](https://registry.npmjs.org/express-rate-limit/-/express-rate-limit-8.6.0.tgz) |
+| `fast-deep-equal` | `3.1.3` | `MIT` | [npm tarball](https://registry.npmjs.org/fast-deep-equal/-/fast-deep-equal-3.1.3.tgz) |
+| `fast-uri` | `3.1.4` | `BSD-3-Clause` | [npm tarball](https://registry.npmjs.org/fast-uri/-/fast-uri-3.1.4.tgz) |
+| `finalhandler` | `2.1.1` | `MIT` | [npm tarball](https://registry.npmjs.org/finalhandler/-/finalhandler-2.1.1.tgz) |
+| `forwarded` | `0.2.0` | `MIT` | [npm tarball](https://registry.npmjs.org/forwarded/-/forwarded-0.2.0.tgz) |
+| `fresh` | `2.0.0` | `MIT` | [npm tarball](https://registry.npmjs.org/fresh/-/fresh-2.0.0.tgz) |
+| `function-bind` | `1.1.2` | `MIT` | [npm tarball](https://registry.npmjs.org/function-bind/-/function-bind-1.1.2.tgz) |
+| `get-intrinsic` | `1.3.0` | `MIT` | [npm tarball](https://registry.npmjs.org/get-intrinsic/-/get-intrinsic-1.3.0.tgz) |
+| `get-proto` | `1.0.1` | `MIT` | [npm tarball](https://registry.npmjs.org/get-proto/-/get-proto-1.0.1.tgz) |
+| `gopd` | `1.2.0` | `MIT` | [npm tarball](https://registry.npmjs.org/gopd/-/gopd-1.2.0.tgz) |
+| `has-symbols` | `1.1.0` | `MIT` | [npm tarball](https://registry.npmjs.org/has-symbols/-/has-symbols-1.1.0.tgz) |
+| `hasown` | `2.0.4` | `MIT` | [npm tarball](https://registry.npmjs.org/hasown/-/hasown-2.0.4.tgz) |
+| `hono` | `4.12.32` | `MIT` | [npm tarball](https://registry.npmjs.org/hono/-/hono-4.12.32.tgz) |
+| `http-errors` | `2.0.1` | `MIT` | [npm tarball](https://registry.npmjs.org/http-errors/-/http-errors-2.0.1.tgz) |
+| `iconv-lite` | `0.7.3` | `MIT` | [npm tarball](https://registry.npmjs.org/iconv-lite/-/iconv-lite-0.7.3.tgz) |
+| `inherits` | `2.0.4` | `ISC` | [npm tarball](https://registry.npmjs.org/inherits/-/inherits-2.0.4.tgz) |
+| `ip-address` | `10.3.1` | `MIT` | [npm tarball](https://registry.npmjs.org/ip-address/-/ip-address-10.3.1.tgz) |
+| `ipaddr.js` | `1.9.1` | `MIT` | [npm tarball](https://registry.npmjs.org/ipaddr.js/-/ipaddr.js-1.9.1.tgz) |
+| `is-promise` | `4.0.0` | `MIT` | [npm tarball](https://registry.npmjs.org/is-promise/-/is-promise-4.0.0.tgz) |
+| `isexe` | `2.0.0` | `ISC` | [npm tarball](https://registry.npmjs.org/isexe/-/isexe-2.0.0.tgz) |
+| `jose` | `6.2.4` | `MIT` | [npm tarball](https://registry.npmjs.org/jose/-/jose-6.2.4.tgz) |
+| `json-schema-traverse` | `1.0.0` | `MIT` | [npm tarball](https://registry.npmjs.org/json-schema-traverse/-/json-schema-traverse-1.0.0.tgz) |
+| `json-schema-typed` | `8.0.2` | `BSD-2-Clause` | [npm tarball](https://registry.npmjs.org/json-schema-typed/-/json-schema-typed-8.0.2.tgz) |
+| `math-intrinsics` | `1.1.0` | `MIT` | [npm tarball](https://registry.npmjs.org/math-intrinsics/-/math-intrinsics-1.1.0.tgz) |
+| `media-typer` | `1.1.1` | `MIT` | [npm tarball](https://registry.npmjs.org/media-typer/-/media-typer-1.1.1.tgz) |
+| `merge-descriptors` | `2.0.0` | `MIT` | [npm tarball](https://registry.npmjs.org/merge-descriptors/-/merge-descriptors-2.0.0.tgz) |
+| `mime-db` | `1.54.0` | `MIT` | [npm tarball](https://registry.npmjs.org/mime-db/-/mime-db-1.54.0.tgz) |
+| `mime-types` | `3.0.2` | `MIT` | [npm tarball](https://registry.npmjs.org/mime-types/-/mime-types-3.0.2.tgz) |
+| `ms` | `2.1.3` | `MIT` | [npm tarball](https://registry.npmjs.org/ms/-/ms-2.1.3.tgz) |
+| `negotiator` | `1.0.0` | `MIT` | [npm tarball](https://registry.npmjs.org/negotiator/-/negotiator-1.0.0.tgz) |
+| `object-assign` | `4.1.1` | `MIT` | [npm tarball](https://registry.npmjs.org/object-assign/-/object-assign-4.1.1.tgz) |
+| `object-inspect` | `1.13.4` | `MIT` | [npm tarball](https://registry.npmjs.org/object-inspect/-/object-inspect-1.13.4.tgz) |
+| `on-finished` | `2.4.1` | `MIT` | [npm tarball](https://registry.npmjs.org/on-finished/-/on-finished-2.4.1.tgz) |
+| `once` | `1.4.0` | `ISC` | [npm tarball](https://registry.npmjs.org/once/-/once-1.4.0.tgz) |
+| `parseurl` | `1.3.3` | `MIT` | [npm tarball](https://registry.npmjs.org/parseurl/-/parseurl-1.3.3.tgz) |
+| `path-key` | `3.1.1` | `MIT` | [npm tarball](https://registry.npmjs.org/path-key/-/path-key-3.1.1.tgz) |
+| `path-to-regexp` | `8.4.2` | `MIT` | [npm tarball](https://registry.npmjs.org/path-to-regexp/-/path-to-regexp-8.4.2.tgz) |
+| `pend` | `1.2.0` | `MIT` | [npm tarball](https://registry.npmjs.org/pend/-/pend-1.2.0.tgz) |
+| `pkce-challenge` | `5.0.1` | `MIT` | [npm tarball](https://registry.npmjs.org/pkce-challenge/-/pkce-challenge-5.0.1.tgz) |
+| `proxy-addr` | `2.0.7` | `MIT` | [npm tarball](https://registry.npmjs.org/proxy-addr/-/proxy-addr-2.0.7.tgz) |
+| `qs` | `6.15.3` | `BSD-3-Clause` | [npm tarball](https://registry.npmjs.org/qs/-/qs-6.15.3.tgz) |
+| `range-parser` | `1.3.0` | `MIT` | [npm tarball](https://registry.npmjs.org/range-parser/-/range-parser-1.3.0.tgz) |
+| `raw-body` | `3.0.2` | `MIT` | [npm tarball](https://registry.npmjs.org/raw-body/-/raw-body-3.0.2.tgz) |
+| `require-from-string` | `2.0.2` | `MIT` | [npm tarball](https://registry.npmjs.org/require-from-string/-/require-from-string-2.0.2.tgz) |
+| `router` | `2.2.0` | `MIT` | [npm tarball](https://registry.npmjs.org/router/-/router-2.2.0.tgz) |
+| `safer-buffer` | `2.1.2` | `MIT` | [npm tarball](https://registry.npmjs.org/safer-buffer/-/safer-buffer-2.1.2.tgz) |
+| `send` | `1.2.1` | `MIT` | [npm tarball](https://registry.npmjs.org/send/-/send-1.2.1.tgz) |
+| `serve-static` | `2.2.1` | `MIT` | [npm tarball](https://registry.npmjs.org/serve-static/-/serve-static-2.2.1.tgz) |
+| `setprototypeof` | `1.2.0` | `ISC` | [npm tarball](https://registry.npmjs.org/setprototypeof/-/setprototypeof-1.2.0.tgz) |
+| `shebang-command` | `2.0.0` | `MIT` | [npm tarball](https://registry.npmjs.org/shebang-command/-/shebang-command-2.0.0.tgz) |
+| `shebang-regex` | `3.0.0` | `MIT` | [npm tarball](https://registry.npmjs.org/shebang-regex/-/shebang-regex-3.0.0.tgz) |
+| `side-channel` | `1.1.1` | `MIT` | [npm tarball](https://registry.npmjs.org/side-channel/-/side-channel-1.1.1.tgz) |
+| `side-channel-list` | `1.0.1` | `MIT` | [npm tarball](https://registry.npmjs.org/side-channel-list/-/side-channel-list-1.0.1.tgz) |
+| `side-channel-map` | `1.0.1` | `MIT` | [npm tarball](https://registry.npmjs.org/side-channel-map/-/side-channel-map-1.0.1.tgz) |
+| `side-channel-weakmap` | `1.0.2` | `MIT` | [npm tarball](https://registry.npmjs.org/side-channel-weakmap/-/side-channel-weakmap-1.0.2.tgz) |
+| `statuses` | `2.0.2` | `MIT` | [npm tarball](https://registry.npmjs.org/statuses/-/statuses-2.0.2.tgz) |
+| `toidentifier` | `1.0.1` | `MIT` | [npm tarball](https://registry.npmjs.org/toidentifier/-/toidentifier-1.0.1.tgz) |
+| `type-is` | `2.1.0` | `MIT` | [npm tarball](https://registry.npmjs.org/type-is/-/type-is-2.1.0.tgz) |
+| `unpipe` | `1.0.0` | `MIT` | [npm tarball](https://registry.npmjs.org/unpipe/-/unpipe-1.0.0.tgz) |
+| `vary` | `1.1.2` | `MIT` | [npm tarball](https://registry.npmjs.org/vary/-/vary-1.1.2.tgz) |
+| `which` | `2.0.2` | `ISC` | [npm tarball](https://registry.npmjs.org/which/-/which-2.0.2.tgz) |
+| `wrappy` | `1.0.2` | `ISC` | [npm tarball](https://registry.npmjs.org/wrappy/-/wrappy-1.0.2.tgz) |
+| `yauzl` | `3.4.0` | `MIT` | [npm tarball](https://registry.npmjs.org/yauzl/-/yauzl-3.4.0.tgz) |
+| `zod` | `4.4.3` | `MIT` | [npm tarball](https://registry.npmjs.org/zod/-/zod-4.4.3.tgz) |
+| `zod-to-json-schema` | `3.25.2` | `ISC` | [npm tarball](https://registry.npmjs.org/zod-to-json-schema/-/zod-to-json-schema-3.25.2.tgz) |
+
+SchemCP itself is licensed under Apache-2.0. This file is an inventory, not legal advice and not a replacement for upstream license files.

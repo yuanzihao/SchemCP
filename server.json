@@ -1,0 +1,21 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.yuanzihao/schemcp",
+  "title": "SchemCP",
+  "description": "Local-first, read-only schematic context for JLCEDA Pro .epro2 projects",
+  "repository": {
+    "url": "https://github.com/yuanzihao/SchemCP",
+    "source": "github"
+  },
+  "version": "0.1.0",
+  "packages": [
+    {
+      "registryType": "npm",
+      "identifier": "@yuanzihao/schemcp",
+      "version": "0.1.0",
+      "transport": {
+        "type": "stdio"
+      }
+    }
+  ]
+}

@@ -1,0 +1,52 @@
+name: 缺陷报告 / Bug report
+description: 报告可复现的 SchemCP 缺陷，不得附加私有 EDA 数据
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        请使用人工构造的最小样本。不要上传真实 .epro2、.enet、Datasheet、网络名、绝对路径或凭据。
+  - type: input
+    id: version
+    attributes:
+      label: SchemCP 版本
+      placeholder: 0.1.0
+    validations:
+      required: true
+  - type: dropdown
+    id: surface
+    attributes:
+      label: 使用入口
+      options:
+        - MCP stdio
+        - CLI
+        - npm 安装或打包
+        - 其他
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 最小复现步骤
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期望行为
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: 实际行为与稳定错误码
+    validations:
+      required: true
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: 隐私确认
+      options:
+        - label: 我确认本报告不包含真实工程、网表、绝对路径、凭据或其他私有 EDA 数据
+          required: true
