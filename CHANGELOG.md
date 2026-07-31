@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- 明确项目只维护嘉立创 EDA 专业版 `.epro2` 原理图解析，其他 EDA 原理图格式暂无支持计划；第三方工程建议先导入嘉立创 EDA 专业版并人工核对后再解析。
+
 ### Planned
 
 - 完善原理图层级实例、Variant/DNP 和显式总线语义；
@@ -26,5 +30,5 @@
 
 ### Changed
 
-- npm 包从私有安装包切换为公共发布准备状态；
-- `schemcp` 是唯一公开可执行入口；项目未正式发布，因此不保留旧命令兼容层。
+- `@yuanzihao/schemcp@0.1.0` 已公开发布，可通过 `npx -y @yuanzihao/schemcp` 启动；
+- `schemcp` 是唯一公开可执行入口；首次公开版本不保留旧命令兼容层。

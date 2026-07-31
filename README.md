@@ -6,6 +6,8 @@
 
 SchemCP 是一个本地优先、只读、确定性、可审计的嘉立创 EDA 专业版原理图 MCP 服务。它直接解析用户提供的 `.epro2` 工程，不要求启动浏览器、EasyEDA Bridge、嘉立创插件 API 或 PCB 编辑器。
 
+> **格式定位**：SchemCP 目前只维护嘉立创 EDA 专业版 `.epro2` 原理图工程解析，其他 EDA 软件的原理图格式暂无支持计划。对于 Altium Designer、KiCad、OrCAD 等工程，建议先导入嘉立创 EDA 专业版，人工核对层级、器件、引脚和网络，再导出 `.epro2` 交给 SchemCP。SchemCP 不读取原始第三方格式，也不验证导入转换是否完整。
+
 ## 名称由来
 
 **SchemCP = Schematic + MCP**
@@ -20,7 +22,7 @@ npm 包：`@yuanzihao/schemcp`
 
 许可证：Apache-2.0
 
-> 发布状态：仓库已具备公共 npm 与 MCP Registry 发布元数据，但当前包尚未发布。发布前可使用本地源码或 `npm pack` 产物验收。
+> `@yuanzihao/schemcp@0.1.0` 已发布到 npm，可直接通过下方 `npx` 命令启动。版本与完整性信息以 [npm 官方页面](https://www.npmjs.com/package/@yuanzihao/schemcp) 为准。
 
 ## 为什么使用 SchemCP
 
@@ -33,7 +35,7 @@ npm 包：`@yuanzihao/schemcp`
 - **事实边界明确**：工程事实、器件事实和工程推断分开返回，不把几何候选冒充完整电气真值。
 - **只读且有界**：工具使用分页、稳定错误码和输入限额；不会修改原理图或生成代码。
 
-当前产品范围只包括原理图。公共 MCP 契约不暴露 PCB 工具，也不依赖 Chrome、Bridge 或在线 API。
+当前产品范围只包括嘉立创 EDA 专业版原理图。公共 MCP 契约不暴露 PCB 工具，也不依赖 Chrome、Bridge 或在线 API。
 
 SchemCP 是独立的社区开源项目，与嘉立创、立创商城、JLCEDA 或 EasyEDA 官方无隶属、授权或背书关系。相关商标归各自权利人所有。
 
@@ -45,7 +47,7 @@ SchemCP 是独立的社区开源项目，与嘉立创、立创商城、JLCEDA �
 | --- | --- | --- |
 | Linux x64 | 支持 | 全量测试、覆盖率、两次确定性打包、离线安装和 MCP 协议验收 |
 | macOS arm64/x64 | 支持 | 全量测试、两次确定性打包、离线安装和 MCP 协议验收 |
-| Windows x64 | 支持 | 全量测试、两次确定性打包、离线安装、合成工程/网表/装配协议验收；正式发布前另需真实 Windows 私有工程验收 |
+| Windows x64 | 兼容实现，真实主机验收待补 | 全量测试、两次确定性打包、离线安装和合成工程/网表/装配协议验收已通过；当前不声称真实 Windows 私有工程验收完成 |
 
 Linux 与 macOS 对私有目录和文件强制检查 `0700/0600`。Windows 不把 `chmod` 结果冒充 POSIX 权限保证：服务仍强制绝对规范路径、排他创建、普通文件、符号链接与链接型 reparse point 拒绝，并在每个 MCP 结果的 `platformSecurity` 中明确返回 `WINDOWS_ACL_NOT_VERIFIED`。需要受管 ACL 的组织应在部署层配置 Windows 目录 ACL。
 
@@ -57,14 +59,14 @@ Linux 与 macOS 对私有目录和文件强制检查 `0700/0600`。Windows 不�
 | 用户提供的 `.enet` 按工程绑定 | 支持，真实性与工程绑定保持未验证 |
 | 器件、引脚、显式网络标签、几何候选查询 | 支持 |
 | 用户确认的多工程连接器映射 | 支持 |
-| Altium、KiCad、OrCAD 等其他 EDA 工程 | 暂不支持 |
+| Altium、KiCad、OrCAD 等其他 EDA 原理图工程 | 不支持，暂无解析计划；建议先导入嘉立创 EDA 专业版并核对后导出 `.epro2` |
 | PCB、在线 Bridge、插件 API、工程写入、代码生成 | 不支持 |
 
 ## 一条命令启动
 
 需要 Node.js 22 或更高版本。
 
-发布到 npm 后，任意支持本地 stdio MCP 的客户端都可以使用：
+任意支持本地 stdio MCP 的客户端都可以直接使用已发布版本：
 
 ```bash
 npx -y @yuanzihao/schemcp
@@ -184,11 +186,12 @@ schemcp mcp-config --client claude-code
 
 ## 第一次使用
 
-1. 在 MCP 客户端中附加或选择一个 `.epro2` 文件。
-2. 将客户端提供的精确绝对路径传给 `open_schematic_project`。
-3. 调用 `list_schematic_projects` 获取 `projectHandle`。
-4. 调用 `list_design_hierarchy`、`list_components`、`get_component` 和 `get_component_pins` 查询原理图。
-5. 需要严格引脚—网络核对时，再用 `attach_schematic_netlist` 为对应工程附加 `.enet`。
+1. 准备嘉立创 EDA 专业版 `.epro2` 原理图工程；其他 EDA 工程应先导入嘉立创 EDA 专业版并人工核对转换结果。
+2. 在 MCP 客户端中附加或选择这个 `.epro2` 文件。
+3. 将客户端提供的精确绝对路径传给 `open_schematic_project`。
+4. 调用 `list_schematic_projects` 获取 `projectHandle`。
+5. 调用 `list_design_hierarchy`、`list_components`、`get_component` 和 `get_component_pins` 查询原理图。
+6. 需要严格引脚—网络核对时，再用 `attach_schematic_netlist` 为对应工程附加 `.enet`。
 
 推荐给模型的首条提示：
 
@@ -261,9 +264,8 @@ npm install --global ./yuanzihao-schemcp-0.1.0.tgz
 schemcp
 ```
 
-## 发布与安全
+## 文档与安全
 
-- [发布流程](docs/PUBLISHING.md)
 - [MCP 接口说明](docs/MCP_SERVICE.md)
 - [48 个 MCP 工具与 JSON Schema](docs/MCP_TOOLS.md)
 - [用户指南](docs/USER_GUIDE.md)

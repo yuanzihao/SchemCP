@@ -2,7 +2,7 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.yuanzihao/schemcp",
   "title": "SchemCP",
-  "description": "Local-first, read-only schematic context for JLCEDA Pro .epro2 projects",
+  "description": "Local-first, read-only schematic context for JLCEDA Pro .epro2 projects only",
   "repository": {
     "url": "https://github.com/yuanzihao/SchemCP",
     "source": "github"

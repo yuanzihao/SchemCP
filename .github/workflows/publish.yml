@@ -1,6 +1,8 @@
-name: Build release candidate
+name: Build release candidate and publish npm
 
 on:
+  release:
+    types: [published]
   workflow_dispatch:
     inputs:
       ref:
@@ -15,12 +17,11 @@ permissions:
 jobs:
   release-candidate:
     runs-on: ubuntu-latest
-    environment: release
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           fetch-depth: 0
-          ref: ${{ inputs.ref }}
+          ref: ${{ github.event.release.tag_name || inputs.ref }}
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: "24"
@@ -30,15 +31,17 @@ jobs:
       - name: Verify candidate belongs to main
         id: candidate
         shell: bash
+        env:
+          CANDIDATE_REF: ${{ github.event.release.tag_name || inputs.ref }}
         run: |
           git fetch --force origin main --tags
           git merge-base --is-ancestor HEAD origin/main
           PACKAGE_VERSION="$(node -p "require('./package.json').version")"
           SERVER_VERSION="$(node -p "require('./server.json').version")"
           test "${PACKAGE_VERSION}" = "${SERVER_VERSION}"
-          if [[ "${{ inputs.ref }}" == v* ]]; then
-            test "${{ inputs.ref }}" = "v${PACKAGE_VERSION}"
-            test "$(git rev-parse "${{ inputs.ref }}^{commit}")" = "$(git rev-parse HEAD)"
+          if [[ "${CANDIDATE_REF}" == v* ]]; then
+            test "${CANDIDATE_REF}" = "v${PACKAGE_VERSION}"
+            test "$(git rev-parse "${CANDIDATE_REF}^{commit}")" = "$(git rev-parse HEAD)"
           fi
           echo "source_date_epoch=$(git show -s --format=%ct HEAD)" >> "${GITHUB_OUTPUT}"
       - run: npm ci
@@ -80,3 +83,39 @@ jobs:
             release/verification-receipt.json
           if-no-files-found: error
           compression-level: 0
+
+  publish-npm:
+    if: github.event_name == 'release'
+    needs: release-candidate
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.release.tag_name }}
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: "24"
+          registry-url: "https://registry.npmjs.org"
+          package-manager-cache: false
+      - name: Pin release npm CLI
+        run: npm install --global npm@11.5.1
+      - name: Verify release tag
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          git fetch --force origin main --tags
+          git merge-base --is-ancestor HEAD origin/main
+          PACKAGE_VERSION="$(node -p "require('./package.json').version")"
+          SERVER_VERSION="$(node -p "require('./server.json').version")"
+          test "${PACKAGE_VERSION}" = "${SERVER_VERSION}"
+          test "${RELEASE_TAG}" = "v${PACKAGE_VERSION}"
+          test "$(git rev-parse "${RELEASE_TAG}^{commit}")" = "$(git rev-parse HEAD)"
+      - run: npm ci
+      - name: Publish npm package through OIDC
+        run: npm publish --access public

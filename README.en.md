@@ -6,6 +6,8 @@
 
 SchemCP is a local-first, read-only, deterministic, and auditable Model Context Protocol server for JLCEDA Pro schematic projects. It parses user-provided `.epro2` archives directly and does not require a browser, EasyEDA Bridge, a JLCEDA plugin API, or a PCB editor.
 
+> **Format scope**: SchemCP currently maintains parsing only for JLCEDA Pro `.epro2` schematic projects. Support for schematic formats from other EDA applications is not planned. For Altium Designer, KiCad, OrCAD, or similar projects, import the design into JLCEDA Pro, manually verify hierarchy, components, pins, and nets, then export an `.epro2` file for SchemCP. SchemCP neither reads the original third-party format nor verifies conversion completeness.
+
 ## Name
 
 **SchemCP = Schematic + MCP**
@@ -20,7 +22,7 @@ npm package: `@yuanzihao/schemcp`
 
 License: Apache-2.0
 
-> Release status: the repository now contains the metadata required for public npm and MCP Registry publishing, but the package has not been published yet. Use the source tree or an `npm pack` artifact for pre-release validation.
+> `@yuanzihao/schemcp@0.1.0` is published on npm and can be started directly with the `npx` command below. Treat the [official npm page](https://www.npmjs.com/package/@yuanzihao/schemcp) as the source of truth for versions and integrity metadata.
 
 ## Why SchemCP
 
@@ -33,7 +35,7 @@ License: Apache-2.0
 - **Explicit truth boundaries**: project facts, part facts, and engineering inferences remain distinguishable.
 - **Read-only and bounded**: tools use pagination, stable error codes, and input limits; SchemCP does not edit schematics or generate firmware.
 
-The current product scope is schematic-only. The public MCP contract exposes no PCB tools and has no Chrome, Bridge, or online API dependency.
+The current product scope is limited to JLCEDA Pro schematics. The public MCP contract exposes no PCB tools and has no Chrome, Bridge, or online API dependency.
 
 SchemCP is an independent community project and is not affiliated with, authorized by, or endorsed by JLC, LCSC, JLCEDA, or EasyEDA. All related trademarks belong to their respective owners.
 
@@ -45,7 +47,7 @@ SchemCP is an independent community project and is not affiliated with, authoriz
 | --- | --- | --- |
 | Linux x64 | Supported | Full tests, coverage, two deterministic packs, offline install, and MCP protocol acceptance |
 | macOS arm64/x64 | Supported | Full tests, two deterministic packs, offline install, and MCP protocol acceptance |
-| Windows x64 | Supported | Full tests, two deterministic packs, offline install, synthetic project/netlist/assembly protocol acceptance, plus a private real-host acceptance before release |
+| Windows x64 | Compatibility implemented; real-host acceptance pending | Full tests, two deterministic packs, offline installation, and synthetic project/netlist/assembly acceptance pass; real Windows private-project acceptance is not yet claimed |
 
 Linux and macOS enforce private `0700/0600` directory and file modes. Windows does not present `chmod` as a POSIX permission guarantee: SchemCP still enforces absolute canonical paths, exclusive creation, regular files, and symbolic-link/link-type reparse-point rejection, while every MCP result reports `WINDOWS_ACL_NOT_VERIFIED` under `platformSecurity`. Organizations requiring managed ACLs should configure Windows directory ACLs at deployment time.
 
@@ -57,14 +59,14 @@ Linux and macOS enforce private `0700/0600` directory and file modes. Windows do
 | Project-scoped user-provided `.enet` binding | Supported; authenticity and project binding remain unverified |
 | Component, pin, explicit net-label, and geometric-candidate queries | Supported |
 | User-confirmed multi-project connector mappings | Supported |
-| Altium, KiCad, OrCAD, and other EDA project formats | Not yet supported |
+| Altium, KiCad, OrCAD, and other EDA schematic formats | Not supported and not planned; import into JLCEDA Pro, verify the conversion, and export `.epro2` first |
 | PCB, online Bridge, plugin APIs, project mutation, and code generation | Not supported |
 
 ## Run with one command
 
 Node.js 22 or newer is required.
 
-After the package is published to npm, any local stdio MCP client can run:
+Any local stdio MCP client can run the published version directly:
 
 ```bash
 npx -y @yuanzihao/schemcp
@@ -184,11 +186,12 @@ schemcp mcp-config --client claude-code
 
 ## First session
 
-1. Attach or select a `.epro2` file in the MCP client.
-2. Pass the exact absolute path supplied by the client to `open_schematic_project`.
-3. Call `list_schematic_projects` and retain the returned `projectHandle`.
-4. Query `list_design_hierarchy`, `list_components`, `get_component`, and `get_component_pins`.
-5. Only when exact pin-to-net verification is required, call `attach_schematic_netlist` for that project.
+1. Prepare a JLCEDA Pro `.epro2` schematic project. Import projects from other EDA applications into JLCEDA Pro and manually verify the conversion first.
+2. Attach or select the `.epro2` file in the MCP client.
+3. Pass the exact absolute path supplied by the client to `open_schematic_project`.
+4. Call `list_schematic_projects` and retain the returned `projectHandle`.
+5. Query `list_design_hierarchy`, `list_components`, `get_component`, and `get_component_pins`.
+6. Only when exact pin-to-net verification is required, call `attach_schematic_netlist` for that project.
 
 Suggested first prompt:
 
@@ -258,9 +261,8 @@ npm install --global ./yuanzihao-schemcp-0.1.0.tgz
 schemcp
 ```
 
-## Publishing and security
+## Documentation and security
 
-- [Publishing guide](docs/PUBLISHING.md)
 - [MCP service reference](docs/MCP_SERVICE.md)
 - [48 MCP tools and JSON Schemas](docs/MCP_TOOLS.md)
 - [User guide](docs/USER_GUIDE.md)

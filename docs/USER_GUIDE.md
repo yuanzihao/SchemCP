@@ -2,7 +2,7 @@
 
 ## 1. 安装
 
-需要 Node.js 22 或更高版本。npm 发布后可直接运行：
+需要 Node.js 22 或更高版本。`npm view @yuanzihao/schemcp version` 能返回公开版本后可直接运行：
 
 ```bash
 npx -y @yuanzihao/schemcp
@@ -14,6 +14,12 @@ npx -y @yuanzihao/schemcp
 npm install --global ./yuanzihao-schemcp-0.1.0.tgz
 schemcp --version
 ```
+
+### 支持的工程格式
+
+SchemCP 目前只维护嘉立创 EDA 专业版 `.epro2` 原理图工程解析，其他 EDA 软件的原理图格式暂无支持计划。
+
+如果原工程来自 Altium Designer、KiCad、OrCAD 或其他 EDA 软件，请先将它导入嘉立创 EDA 专业版，人工检查层级结构、器件属性、位号、引脚编号和关键网络，再导出 `.epro2`。SchemCP 只解析导出的 `.epro2`，不会读取原始第三方工程，也不能证明导入过程没有丢失或改变设计信息。
 
 ## 2. 接入 AI 客户端
 

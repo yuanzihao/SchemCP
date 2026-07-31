@@ -131,11 +131,30 @@ const englishReadme = await readFile(
   path.join(root, "README.en.md"),
   "utf8"
 );
+const npmPublishWorkflow = await readFile(
+  path.join(root, ".github/workflows/publish.yml"),
+  "utf8"
+);
 for (const readme of [chineseReadme, englishReadme]) {
   assert.match(readme, /npx -y @yuanzihao\/schemcp/u);
   assert.match(readme, /Apache-2\.0/u);
   assert.doesNotMatch(readme, /file:\/\/|\/Users\/|[A-Z]:\\/u);
 }
+
+assert.match(npmPublishWorkflow, /release:\s*\n\s+types:\s*\[published\]/u);
+assert.match(npmPublishWorkflow, /environment:\s*release/u);
+assert.match(npmPublishWorkflow, /id-token:\s*write/u);
+assert.match(
+  npmPublishWorkflow,
+  /registry-url:\s*["']https:\/\/registry\.npmjs\.org["']/u
+);
+assert.match(npmPublishWorkflow, /npm install --global npm@11\.5\.1/u);
+assert.match(npmPublishWorkflow, /npm publish --access public/u);
+assert.doesNotMatch(
+  npmPublishWorkflow,
+  /NODE_AUTH_TOKEN|NPM_TOKEN|secrets\./u,
+  "Trusted Publisher 工作流不得依赖长期 npm 发布 Token"
+);
 
 if (!process.argv.includes("--quiet")) {
   process.stdout.write(

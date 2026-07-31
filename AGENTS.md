@@ -6,7 +6,9 @@
 
 SchemCP = Schematic + MCP。
 
-SchemCP 是面向 AI 编程工具的本地优先原理图上下文服务。当前 `0.1.x` 只读取嘉立创 EDA 专业版导出的 `.epro2` 原理图工程，并通过只读 stdio MCP 与辅助 CLI 提供确定性查询。
+SchemCP 是面向 AI 编程工具的本地优先原理图上下文服务。当前及可预见的维护范围只读取嘉立创 EDA 专业版导出的 `.epro2` 原理图工程，并通过只读 stdio MCP 与辅助 CLI 提供确定性查询。其他 EDA 软件的原理图解析暂无计划，不应建立格式适配器、兼容承诺或路线图占位。
+
+用户持有 Altium Designer、KiCad、OrCAD 等其他格式时，建议先导入嘉立创 EDA 专业版，人工核对转换后的层级、器件、引脚和网络，再导出 `.epro2`。SchemCP 只负责解析导出结果，不读取原始第三方格式，也不证明格式迁移完整。
 
 稳定公共标识：
 
@@ -29,6 +31,7 @@ SchemCP 是面向 AI 编程工具的本地优先原理图上下文服务。当�
 
 不在当前范围：
 
+- Altium Designer、KiCad、OrCAD 或其他 EDA 原理图格式解析器；
 - PCB、封装几何、布线、叠层、规则、铺铜或制造分析；
 - Chrome、EasyEDA Bridge 或插件 API 作为运行前置条件；
 - 修改 EDA 工程、自动布线、生成固件或无边界信号传播；

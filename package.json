@@ -1,7 +1,7 @@
 {
   "name": "@yuanzihao/schemcp",
   "version": "0.1.0",
-  "description": "Local-first, deterministic and auditable schematic context MCP server for JLCEDA Pro projects",
+  "description": "Local-first, deterministic and auditable schematic context MCP server for JLCEDA Pro .epro2 projects",
   "author": "yuanzihao",
   "license": "Apache-2.0",
   "mcpName": "io.github.yuanzihao/schemcp",
@@ -40,7 +40,6 @@
     "docs/MCP_TOOLS.md",
     "docs/mcp-tools.contract.json",
     "docs/MCP_SERVICE.md",
-    "docs/PUBLISHING.md",
     "docs/USER_GUIDE.md",
     "docs/TRUTH_VALIDATION.md"
   ],

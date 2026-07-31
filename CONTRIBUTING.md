@@ -1,8 +1,8 @@
 # 为 SchemCP 贡献 / Contributing to SchemCP
 
-感谢你帮助改进 SchemCP。项目当前只接受原理图离线解析、查询、安全、文档和 MCP 集成相关贡献；PCB、Chrome、EasyEDA Bridge、在线 API、工程写入和代码生成不在当前范围内。
+感谢你帮助改进 SchemCP。项目当前只接受嘉立创 EDA 专业版 `.epro2` 原理图离线解析、查询、安全、文档和 MCP 集成相关贡献。其他 EDA 软件的原理图解析器暂无计划，也不接受以兼容层或路线图占位形式引入；PCB、Chrome、EasyEDA Bridge、在线 API、工程写入和代码生成同样不在当前范围内。
 
-Thank you for improving SchemCP. The active scope is offline schematic parsing, queries, security, documentation, and MCP integration. PCB features, Chrome, EasyEDA Bridge, online APIs, design mutation, and code generation are currently out of scope.
+Thank you for improving SchemCP. The active scope is offline parsing of JLCEDA Pro `.epro2` schematics, queries, security, documentation, and MCP integration. Parsers for other EDA schematic formats are not planned and should not be introduced as compatibility layers or roadmap placeholders. PCB features, Chrome, EasyEDA Bridge, online APIs, design mutation, and code generation are also out of scope.
 
 ## 开始之前 / Before you start
 
