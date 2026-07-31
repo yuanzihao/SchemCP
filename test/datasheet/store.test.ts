@@ -214,7 +214,7 @@ test("数据表查询只按精确身份分页，并返回有界主题文本", as
   });
   assert.equal(lookup.status, "FOUND");
   assert.match(JSON.stringify(lookup), /168 MHz/u);
-  assert.doesNotMatch(JSON.stringify(lookup), new RegExp(storePath, "u"));
+  assert.equal(JSON.stringify(lookup).includes(storePath), false);
 });
 
 test("PDF 文本提取保留两页、元数据和书签范围但不冒充版面真值", async () => {
