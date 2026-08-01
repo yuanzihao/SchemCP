@@ -1,0 +1,561 @@
+#!/usr/bin/env node
+
+import { createHash, randomUUID } from "node:crypto";
+import { execFile as execFileCallback } from "node:child_process";
+import {
+  lstat,
+  mkdtemp,
+  open,
+  readFile,
+  rename,
+  rm
+} from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import process from "node:process";
+import { promisify } from "node:util";
+import { compileProject } from "../application/compile-project.js";
+import { canonicalJson, sha256CanonicalJson } from "../core/canonical-json.js";
+import type { EdaIr, EdaIrSummary } from "../ir/model.js";
+import { buildNetlistComparisonReport } from "../truth/compare-netlist-evidence.js";
+import { readPrivateNetlist } from "../truth/import-netlist-evidence.js";
+import {
+  parseRealProjectManifest,
+  REAL_PROJECT_MANIFEST_LIMITS,
+  type RealProjectAssemblyBaseline,
+  type RealProjectComparisonBaseline,
+  type RealProjectHierarchyBaseline,
+  type RealProjectSampleManifest
+} from "./real-project-manifest.js";
+
+const execFile = promisify(execFileCallback);
+const SHA256_PATTERN = /^[a-f0-9]{64}$/;
+
+type HierarchySummary = Pick<
+  EdaIrSummary,
+  | "instanceDocuments"
+  | "instanceContexts"
+  | "instanceContextsResolved"
+  | "instanceContextsUnresolved"
+  | "instanceAttributeOverrides"
+  | "instanceAttributeOverridesAppliedToComponents"
+  | "instanceAttributeOverridesAppliedToPins"
+  | "instanceAttributeOverridesUnresolved"
+  | "componentOccurrences"
+>;
+
+interface SampleReceipt {
+  readonly sampleId: string;
+  readonly sourceSha256: string;
+  readonly netlistSha256: string;
+  readonly reducedStateSha256: string;
+  readonly irSha256: string;
+  readonly diagnostics: {
+    readonly baselineCount: number;
+    readonly actualCount: number;
+    readonly changed: boolean;
+  };
+  readonly hierarchy: HierarchySummary;
+  readonly assembly: {
+    readonly addIntoBomAttributes: number;
+    readonly explicitDnp: number;
+    readonly requiredDnpVerified: number;
+  };
+  readonly comparison: {
+    readonly status: string;
+    readonly candidateTupleCount: number;
+    readonly truthTupleCount: number;
+    readonly matched: number;
+    readonly missingInCandidate: number;
+    readonly unexpectedCandidate: number;
+    readonly candidateDuplicates: number;
+    readonly truthDuplicates: number;
+    readonly excludedCandidatePins: number;
+  };
+}
+
+class RealProjectVerificationError extends Error {
+  public constructor(public readonly code: string, message: string) {
+    super(message);
+    this.name = "RealProjectVerificationError";
+  }
+}
+
+function fail(code: string, message: string): never {
+  throw new RealProjectVerificationError(code, message);
+}
+
+function equalCount(
+  actual: number,
+  expected: number,
+  field: string
+): void {
+  if (actual !== expected) {
+    fail("REAL_PROJECT_BASELINE_MISMATCH", `${field} 与冻结基线不一致`);
+  }
+}
+
+function hierarchySummary(summary: EdaIrSummary): HierarchySummary {
+  return {
+    instanceDocuments: summary.instanceDocuments,
+    instanceContexts: summary.instanceContexts,
+    instanceContextsResolved: summary.instanceContextsResolved,
+    instanceContextsUnresolved: summary.instanceContextsUnresolved,
+    instanceAttributeOverrides: summary.instanceAttributeOverrides,
+    instanceAttributeOverridesAppliedToComponents:
+      summary.instanceAttributeOverridesAppliedToComponents,
+    instanceAttributeOverridesAppliedToPins:
+      summary.instanceAttributeOverridesAppliedToPins,
+    instanceAttributeOverridesUnresolved:
+      summary.instanceAttributeOverridesUnresolved,
+    componentOccurrences: summary.componentOccurrences
+  };
+}
+
+function verifyHierarchy(
+  actual: HierarchySummary,
+  expected: RealProjectHierarchyBaseline,
+  sampleId: string
+): void {
+  for (const key of Object.keys(expected) as (keyof HierarchySummary)[]) {
+    equalCount(actual[key], expected[key], `${sampleId}.hierarchy.${key}`);
+  }
+}
+
+function assemblyEvidence(
+  ir: EdaIr,
+  baseline: RealProjectAssemblyBaseline | undefined,
+  sampleId: string
+): SampleReceipt["assembly"] {
+  if (baseline === undefined) {
+    return {
+      addIntoBomAttributes: 0,
+      explicitDnp: 0,
+      requiredDnpVerified: 0
+    };
+  }
+  const attributes = ir.components.flatMap((component) =>
+    component.attributes
+      .filter((attribute) => attribute.key === baseline.attributeKey)
+      .map((attribute) => ({ component, attribute }))
+  );
+  const dnp = attributes.filter(
+    ({ attribute }) =>
+      typeof attribute.value === "string" &&
+      attribute.value.toLocaleLowerCase("en-US") === baseline.dnpValue
+  );
+  equalCount(
+    attributes.length,
+    baseline.attributeCount,
+    `${sampleId}.assembly.attributeCount`
+  );
+  equalCount(
+    dnp.length,
+    baseline.explicitDnpCount,
+    `${sampleId}.assembly.explicitDnpCount`
+  );
+  let requiredDnpVerified = 0;
+  for (const designator of baseline.requiredDnpDesignators) {
+    const matches = dnp.filter(
+      ({ component }) => component.designator === designator
+    );
+    equalCount(
+      matches.length,
+      1,
+      `${sampleId}.assembly.requiredDnpDesignator`
+    );
+    requiredDnpVerified += 1;
+  }
+  return {
+    addIntoBomAttributes: attributes.length,
+    explicitDnp: dnp.length,
+    requiredDnpVerified
+  };
+}
+
+function verifyComparison(
+  actual: SampleReceipt["comparison"],
+  baseline: RealProjectComparisonBaseline,
+  sampleId: string
+): void {
+  equalCount(
+    actual.truthTupleCount,
+    baseline.truthTupleCount,
+    `${sampleId}.comparison.truthTupleCount`
+  );
+  if (baseline.status === "EXACT_SET_MATCH") {
+    if (
+      actual.status !== "EXACT_SET_MATCH" ||
+      actual.candidateTupleCount !== baseline.candidateTupleCount ||
+      actual.matched !== baseline.matched ||
+      actual.missingInCandidate !== 0 ||
+      actual.unexpectedCandidate !== 0 ||
+      actual.candidateDuplicates !== 0 ||
+      actual.truthDuplicates !== 0
+    ) {
+      fail(
+        "REAL_PROJECT_NETLIST_REGRESSION",
+        `${sampleId} 不再保持精确集合匹配`
+      );
+    }
+    return;
+  }
+  if (
+    actual.matched < baseline.matched ||
+    actual.missingInCandidate > baseline.missingInCandidate ||
+    actual.unexpectedCandidate > baseline.unexpectedCandidate ||
+    actual.candidateDuplicates > baseline.candidateDuplicates ||
+    actual.truthDuplicates > baseline.truthDuplicates ||
+    actual.excludedCandidatePins > baseline.excludedCandidatePins
+  ) {
+    fail(
+      "REAL_PROJECT_NETLIST_REGRESSION",
+      `${sampleId} 的网表匹配数量下降或差异扩大`
+    );
+  }
+}
+
+async function verifySample(
+  sample: RealProjectSampleManifest
+): Promise<SampleReceipt> {
+  const [firstIr, netlist] = await Promise.all([
+    compileProject(sample.projectPath),
+    readPrivateNetlist(sample.netlistPath)
+  ]);
+  const secondIr = await compileProject(sample.projectPath);
+  if (
+    firstIr.irSha256 !== secondIr.irSha256 ||
+    firstIr.source.reducedStateSha256 !== secondIr.source.reducedStateSha256
+  ) {
+    fail(
+      "REAL_PROJECT_NON_DETERMINISTIC",
+      `${sample.sampleId} 连续编译结果不一致`
+    );
+  }
+  if (firstIr.source.archiveSha256 !== sample.sourceSha256) {
+    fail("REAL_PROJECT_INPUT_CHANGED", `${sample.sampleId} 工程输入哈希变化`);
+  }
+  const report = buildNetlistComparisonReport(firstIr, netlist.bytes);
+  if (report.netlist.sha256 !== sample.netlistSha256) {
+    fail("REAL_PROJECT_INPUT_CHANGED", `${sample.sampleId} 网表输入哈希变化`);
+  }
+  const diagnosticsSha256 = sha256CanonicalJson(firstIr.diagnostics);
+  if (
+    firstIr.diagnostics.length !== sample.expectedDiagnostics.count ||
+    diagnosticsSha256 !== sample.expectedDiagnostics.sha256
+  ) {
+    fail(
+      "REAL_PROJECT_DIAGNOSTIC_DELTA",
+      `${sample.sampleId} 诊断集合相对冻结基线发生变化`
+    );
+  }
+  const hierarchy = hierarchySummary(firstIr.summary);
+  if (sample.hierarchyBaseline !== undefined) {
+    verifyHierarchy(hierarchy, sample.hierarchyBaseline, sample.sampleId);
+  }
+  const comparison = {
+    status: report.comparison.status,
+    candidateTupleCount: report.comparison.candidateTupleCount,
+    truthTupleCount: report.comparison.truthTupleCount,
+    matched: report.comparison.matched.length,
+    missingInCandidate: report.comparison.missingInCandidate.length,
+    unexpectedCandidate: report.comparison.unexpectedCandidate.length,
+    candidateDuplicates: report.comparison.candidateDuplicates.length,
+    truthDuplicates: report.comparison.truthDuplicates.length,
+    excludedCandidatePins:
+      report.candidateCompilation.summary.excludedPinInstances
+  };
+  verifyComparison(comparison, sample.comparisonBaseline, sample.sampleId);
+  return {
+    sampleId: sample.sampleId,
+    sourceSha256: firstIr.source.archiveSha256,
+    netlistSha256: report.netlist.sha256,
+    reducedStateSha256: firstIr.source.reducedStateSha256,
+    irSha256: firstIr.irSha256,
+    diagnostics: {
+      baselineCount: sample.expectedDiagnostics.count,
+      actualCount: firstIr.diagnostics.length,
+      changed: false
+    },
+    hierarchy,
+    assembly: assemblyEvidence(
+      firstIr,
+      sample.assemblyBaseline,
+      sample.sampleId
+    ),
+    comparison
+  };
+}
+
+async function readManifest(manifestPath: string): Promise<unknown> {
+  if (!path.isAbsolute(manifestPath) || path.extname(manifestPath) !== ".json") {
+    fail(
+      "REAL_PROJECT_MANIFEST_PATH_INVALID",
+      "SCHEMCP_REAL_PROJECT_MANIFEST 必须是绝对 JSON 路径"
+    );
+  }
+  const metadata = await lstat(manifestPath);
+  if (
+    !metadata.isFile() ||
+    metadata.isSymbolicLink() ||
+    metadata.size === 0 ||
+    metadata.size > REAL_PROJECT_MANIFEST_LIMITS.maxBytes
+  ) {
+    fail("REAL_PROJECT_MANIFEST_PATH_INVALID", "真实工程清单不是安全普通文件");
+  }
+  let value: unknown;
+  try {
+    value = JSON.parse(await readFile(manifestPath, "utf8")) as unknown;
+  } catch {
+    fail("REAL_PROJECT_MANIFEST_INVALID", "真实工程清单不是有效 JSON");
+  }
+  return value;
+}
+
+async function sourceSnapshot(root: string): Promise<string> {
+  const result = await execFile(
+    "git",
+    ["ls-files", "--cached", "--others", "--exclude-standard", "-z"],
+    { cwd: root, encoding: "buffer", maxBuffer: 16 * 1024 * 1024 }
+  );
+  const names = result.stdout
+    .toString("utf8")
+    .split("\0")
+    .filter((name) => name.length > 0)
+    .sort();
+  if (names.length === 0) {
+    fail("REAL_PROJECT_SOURCE_SNAPSHOT_INVALID", "候选源码文件集合为空");
+  }
+  const entries: {
+    readonly path: string;
+    readonly bytes: number;
+    readonly sha256: string;
+  }[] = [];
+  for (const name of names) {
+    const absolute = path.resolve(root, name);
+    const relative = path.relative(root, absolute);
+    if (relative.startsWith("..") || path.isAbsolute(relative)) {
+      fail("REAL_PROJECT_SOURCE_SNAPSHOT_INVALID", "候选源码路径越界");
+    }
+    const metadata = await lstat(absolute);
+    if (!metadata.isFile() || metadata.isSymbolicLink()) {
+      fail("REAL_PROJECT_SOURCE_SNAPSHOT_INVALID", "候选源码包含非普通文件");
+    }
+    const bytes = await readFile(absolute);
+    entries.push({
+      path: name.replaceAll(path.sep, "/"),
+      bytes: bytes.length,
+      sha256: createHash("sha256").update(bytes).digest("hex")
+    });
+  }
+  return sha256CanonicalJson(entries);
+}
+
+function parsePackageReceipt(stdout: string): {
+  readonly tarballSha256: string;
+  readonly packageBytes: number;
+  readonly realHierarchyQuery: string;
+} {
+  const lines = stdout.trim().split(/\r?\n/u);
+  const last = lines[lines.length - 1];
+  let value: unknown;
+  try {
+    value = JSON.parse(last ?? "") as unknown;
+  } catch {
+    fail("REAL_PROJECT_PACKAGE_GATE_FAILED", "候选包验证未返回规范回执");
+  }
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    fail("REAL_PROJECT_PACKAGE_GATE_FAILED", "候选包验证回执类型非法");
+  }
+  const record = value as Record<string, unknown>;
+  if (
+    record.ok !== true ||
+    typeof record.tarballSha256 !== "string" ||
+    !SHA256_PATTERN.test(record.tarballSha256) ||
+    !Number.isSafeInteger(record.packageBytes) ||
+    record.realHierarchyQuery !== "VERIFIED"
+  ) {
+    fail("REAL_PROJECT_PACKAGE_GATE_FAILED", "候选包真实层级调用未通过");
+  }
+  return {
+    tarballSha256: record.tarballSha256,
+    packageBytes: record.packageBytes as number,
+    realHierarchyQuery: record.realHierarchyQuery
+  };
+}
+
+async function verifyInstalledPackage(
+  root: string,
+  projectPath: string,
+  npmCache: string
+): Promise<ReturnType<typeof parsePackageReceipt>> {
+  try {
+    const result = await execFile(
+      process.execPath,
+      ["dist/src/verification/verify-package.js", projectPath],
+      {
+        cwd: root,
+        env: {
+          ...process.env,
+          npm_config_cache: npmCache,
+          npm_config_audit: "false",
+          npm_config_fund: "false"
+        },
+        encoding: "utf8",
+        maxBuffer: 32 * 1024 * 1024
+      }
+    );
+    return parsePackageReceipt(result.stdout);
+  } catch (error) {
+    if (error instanceof RealProjectVerificationError) throw error;
+    fail("REAL_PROJECT_PACKAGE_GATE_FAILED", "候选包安装态真实工程验证失败");
+  }
+}
+
+async function writeReceipt(
+  receiptPath: string,
+  value: Readonly<Record<string, unknown>>
+): Promise<string> {
+  if (!path.isAbsolute(receiptPath) || path.extname(receiptPath) !== ".json") {
+    fail("REAL_PROJECT_RECEIPT_PATH_INVALID", "真实工程回执路径必须是绝对 JSON 路径");
+  }
+  try {
+    const current = await lstat(receiptPath);
+    if (!current.isFile() || current.isSymbolicLink()) {
+      fail("REAL_PROJECT_RECEIPT_PATH_INVALID", "既有真实工程回执不是普通文件");
+    }
+  } catch (error) {
+    if (
+      error instanceof RealProjectVerificationError ||
+      !(
+        error !== null &&
+        typeof error === "object" &&
+        "code" in error &&
+        error.code === "ENOENT"
+      )
+    ) {
+      throw error;
+    }
+  }
+  const receiptSha256 = sha256CanonicalJson(value);
+  const output = canonicalJson({ ...value, receiptSha256 });
+  const temporary = path.join(
+    path.dirname(receiptPath),
+    `.${path.basename(receiptPath)}.${process.pid}.${randomUUID()}.tmp`
+  );
+  const handle = await open(temporary, "wx", 0o600);
+  try {
+    await handle.writeFile(`${output}\n`, "utf8");
+  } finally {
+    await handle.close();
+  }
+  try {
+    await rename(temporary, receiptPath);
+  } catch (error) {
+    await rm(temporary, { force: true });
+    throw error;
+  }
+  return receiptSha256;
+}
+
+async function main(): Promise<void> {
+  const root = process.cwd();
+  const manifestPath = process.env.SCHEMCP_REAL_PROJECT_MANIFEST;
+  if (manifestPath === undefined) {
+    fail(
+      "REAL_PROJECT_MANIFEST_NOT_CONFIGURED",
+      "缺少 SCHEMCP_REAL_PROJECT_MANIFEST"
+    );
+  }
+  const manifest = parseRealProjectManifest(await readManifest(manifestPath));
+  const sourceSnapshotSha256 = await sourceSnapshot(root);
+  const sampleReceipts: SampleReceipt[] = [];
+  for (const sample of manifest.samples) {
+    sampleReceipts.push(await verifySample(sample));
+  }
+  const acceptance = manifest.samples.find(
+    (sample) => sample.sampleId === manifest.packageAcceptanceSampleId
+  );
+  if (acceptance === undefined) {
+    fail("REAL_PROJECT_MANIFEST_INVALID", "候选包验收样本缺失");
+  }
+  const temporaryRoot = await mkdtemp(
+    path.join(tmpdir(), "schemcp-real-projects-")
+  );
+  let packageReceipt: Awaited<ReturnType<typeof verifyInstalledPackage>>;
+  try {
+    packageReceipt = await verifyInstalledPackage(
+      root,
+      acceptance.projectPath,
+      path.join(temporaryRoot, "npm-cache")
+    );
+  } finally {
+    await rm(temporaryRoot, { recursive: true, force: true });
+  }
+  const finalSourceSnapshotSha256 = await sourceSnapshot(root);
+  if (finalSourceSnapshotSha256 !== sourceSnapshotSha256) {
+    fail(
+      "REAL_PROJECT_SOURCE_CHANGED_DURING_GATE",
+      "真实工程门禁期间候选源码发生变化"
+    );
+  }
+  const receiptPath =
+    process.env.SCHEMCP_REAL_PROJECT_RECEIPT ??
+    path.join(
+      path.dirname(manifestPath),
+      `${path.basename(manifestPath, ".json")}.receipt.json`
+    );
+  const receiptSha256 = await writeReceipt(receiptPath, {
+    schemaVersion: "1.0.0",
+    gate: "REAL_PROJECTS_VERIFIED",
+    baselineId: manifest.baselineId,
+    sourceSnapshotSha256,
+    candidatePackage: packageReceipt,
+    sampleReceipts
+  });
+  process.stdout.write(
+    `${JSON.stringify({
+      ok: true,
+      gate: "REAL_PROJECTS_VERIFIED",
+      baselineId: manifest.baselineId,
+      sourceSnapshotSha256,
+      candidateTarballSha256: packageReceipt.tarballSha256,
+      receiptSha256,
+      samples: sampleReceipts.length,
+      exactNetlistMatches: sampleReceipts.filter(
+        (item) => item.comparison.status === "EXACT_SET_MATCH"
+      ).length,
+      resolvedInstanceContexts: sampleReceipts.reduce(
+        (total, item) => total + item.hierarchy.instanceContextsResolved,
+        0
+      ),
+      explicitDnpEvidence: sampleReceipts.reduce(
+        (total, item) => total + item.assembly.explicitDnp,
+        0
+      ),
+      privatePathsDisclosed: false
+    })}\n`
+  );
+}
+
+try {
+  await main();
+} catch (error) {
+  const code =
+    error instanceof RealProjectVerificationError ||
+    (error !== null &&
+      typeof error === "object" &&
+      "code" in error &&
+      typeof error.code === "string")
+      ? error.code
+      : "REAL_PROJECT_VERIFICATION_INTERNAL_ERROR";
+  process.stderr.write(
+    `${JSON.stringify({
+      ok: false,
+      gate: "REAL_PROJECTS_VERIFICATION_FAILED",
+      error: { code },
+      privatePathsDisclosed: false
+    })}\n`
+  );
+  process.exitCode = 2;
+}

@@ -86,6 +86,16 @@ const COMPONENT_SELECTOR = {
     .describe("可选页面 ID，用于消歧")
 } as const;
 
+const COMPONENT_INSTANCE_SELECTOR = {
+  ...COMPONENT_SELECTOR,
+  instanceContextId: z
+    .string()
+    .min(1)
+    .max(QUERY_LIMITS.maxTextLength)
+    .optional()
+    .describe("可选精确 INSTANCE 上下文 ID；指定后返回该层级实例中的有效组件属性")
+} as const;
+
 const VARIANT_SELECTOR = {
   variantId: z
     .string()
@@ -1001,10 +1011,16 @@ export function createEdaMcpServer(
     {
       title: "分页列出工程设计层级",
       description:
-        "分页返回工程配置、Board、Schematic 和 Sheet 节点。父子关系只来自归档成员关系或 META 中的显式引用，不根据名称猜测。",
+        "分页返回工程配置、Board、Schematic、Sheet 和显式 INSTANCE 上下文节点。父子关系只来自归档成员关系、META 引用或已校验 INSTANCE 路径，不根据名称猜测。",
       inputSchema: {
         kind: z
-          .enum(["PROJECT_CONFIGURATION", "BOARD", "SCHEMATIC", "SHEET"])
+          .enum([
+            "PROJECT_CONFIGURATION",
+            "BOARD",
+            "SCHEMATIC",
+            "SHEET",
+            "INSTANCE_CONTEXT"
+          ])
           .optional(),
         parentId: z
           .string()
@@ -1028,7 +1044,7 @@ export function createEdaMcpServer(
     {
       title: "分页列出显式层级实例上下文",
       description:
-        "解析并分页返回官方 INSTANCE 文档 UUID 中的 Schematic、Block 路径和终端页号。页号保留为标识符，不推断为 SCH_PAGE。",
+        "兼容官方页号编码和当前导出的页面 ID/Block 编码，分页返回已校验的层级路径、终端页、解析状态和有效组件实例数量。",
       inputSchema: {
         schematicId: z
           .string()
@@ -1043,8 +1059,8 @@ export function createEdaMcpServer(
     (args) =>
       runQuery(() => ({
         page: index.listInstanceContexts(args),
-        pathTruth: "EXPLICIT_INSTANCE_DOCUMENT_UUID",
-        sheetResolution: "NOT_VERIFIED"
+        pathTruth: "EXPLICIT_INSTANCE_DOCUMENT_PATH",
+        sheetResolution: "DETERMINISTIC_REFERENCE_RESOLUTION"
       }))
   );
 
@@ -1053,7 +1069,7 @@ export function createEdaMcpServer(
     {
       title: "获取实例上下文及原始属性覆盖",
       description:
-        "通过精确 INSTANCE 文档 ID 获取路径，并分页返回 INSTANCE_ATTR 原始属性。目标图元尚未解析，覆盖不会被应用。",
+        "通过精确 INSTANCE 文档 ID 获取已校验路径，并分页返回每条 INSTANCE_ATTR 的应用状态与精确目标；未解析项保留稳定原因，不会被猜测应用。",
       inputSchema: {
         contextId: z
           .string()
@@ -1075,7 +1091,7 @@ export function createEdaMcpServer(
     {
       title: "分页列出组件",
       description:
-        "按确定顺序分页列出组件，可按页面和位号子串筛选。摘要直接包含器件/符号名称、显式 LCSC 或制造商+MPN 身份以及工程 Datasheet 链接数量，便于 AI 先建立面向人的器件目录；完整参数和链接使用 get_component。",
+        "按确定顺序分页列出组件，可按页面、位号子串和层级实例上下文筛选。指定 instanceContextId 后返回该实例中的有效位号和属性来源；完整参数和链接使用 get_component。",
       inputSchema: {
         pageId: z
           .string()
@@ -1089,6 +1105,12 @@ export function createEdaMcpServer(
           .max(QUERY_LIMITS.maxTextLength)
           .optional()
           .describe("不区分大小写的位号子串"),
+        instanceContextId: z
+          .string()
+          .min(1)
+          .max(QUERY_LIMITS.maxTextLength)
+          .optional()
+          .describe("可选精确 INSTANCE 上下文 ID"),
         ...PAGE_INPUT
       },
       annotations: READ_ONLY_ANNOTATIONS
@@ -1509,8 +1531,8 @@ export function createEdaMcpServer(
     {
       title: "获取单个组件",
       description:
-        "通过组件 ID 或精确位号获取组件；返回器件/符号名称、精确身份、组件属性优先于 Device 默认值的全部显式参数、工程 Datasheet HTTPS 链接和由显式 C-ID 生成的商城入口。重复位号不会被静默选择；链接来源真实性与在线目录匹配状态会单独标注。",
-      inputSchema: COMPONENT_SELECTOR,
+        "通过组件 ID 或精确位号获取基础组件，也可指定 instanceContextId 获取层级实例中已应用 INSTANCE_ATTR 后的有效组件。重复位号不会被静默选择；属性来源、链接真实性与在线目录匹配状态会单独标注。",
+      inputSchema: COMPONENT_INSTANCE_SELECTOR,
       annotations: READ_ONLY_ANNOTATIONS
     },
     (args) =>
@@ -1524,9 +1546,9 @@ export function createEdaMcpServer(
     {
       title: "获取组件符号引脚",
       description:
-        "分页返回组件引脚实例、变换后的连接点及显式网络几何候选。候选尚未通过官方网表验证。",
+        "分页返回组件引脚实例、变换后的连接点及显式网络几何候选；指定 instanceContextId 时同时返回已精确绑定的引脚实例覆盖。候选尚未通过官方网表验证。",
       inputSchema: {
-        ...COMPONENT_SELECTOR,
+        ...COMPONENT_INSTANCE_SELECTOR,
         ...PAGE_INPUT
       },
       annotations: READ_ONLY_ANNOTATIONS

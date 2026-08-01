@@ -27,10 +27,10 @@ License: Apache-2.0
 ## Why SchemCP
 
 - **Offline schematic parsing**: normal queries operate on local `.epro2` files without an online service.
-- **Stable intermediate representation**: the public EDA-IR is identified as `schemcp.eda-ir` 1.0.0 and hashes deterministic content.
+- **Stable intermediate representation**: the public EDA-IR is identified as `schemcp.eda-ir` 1.1.0 and hashes deterministic content.
 - **Attachment-first startup**: the MCP server starts without a project and opens a file only after the user explicitly supplies it.
 - **Multi-project workspace**: one session can hold up to four projects and user-declared assemblies.
-- **Component context**: query designators, titles, manufacturers, MPNs, LCSC C-IDs, datasheet URLs, pins, instance properties, and network evidence.
+- **Component context**: resolve both supported INSTANCE path encodings and query base components or effective designators, attributes, pin overrides, and network evidence in one hierarchy occurrence.
 - **Optional `.enet` evidence**: bind a netlist to one project when exact pin-to-net endpoint comparison is needed.
 - **Explicit truth boundaries**: project facts, part facts, and engineering inferences remain distinguishable.
 - **Read-only and bounded**: tools use pagination, stable error codes, and input limits; SchemCP does not edit schematics or generate firmware.
@@ -190,7 +190,7 @@ schemcp mcp-config --client claude-code
 2. Attach or select the `.epro2` file in the MCP client.
 3. Pass the exact absolute path supplied by the client to `open_schematic_project`.
 4. Call `list_schematic_projects` and retain the returned `projectHandle`.
-5. Query `list_design_hierarchy`, `list_components`, `get_component`, and `get_component_pins`.
+5. Call `list_design_hierarchy` and `list_instance_contexts` first. Pass the returned `instanceContextId` to `list_components`, `get_component`, or `get_component_pins` when effective hierarchy-occurrence properties are required.
 6. Only when exact pin-to-net verification is required, call `attach_schematic_netlist` for that project.
 
 Suggested first prompt:

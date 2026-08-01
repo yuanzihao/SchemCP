@@ -6,6 +6,10 @@ import {
 } from "../connectivity/compile-pin-instances.js";
 import { compileShortRelations } from "../connectivity/compile-short-relations.js";
 import {
+  resolveInstanceContexts,
+  type RawInstanceContext
+} from "../hierarchy/resolve-instance-contexts.js";
+import {
   compileComponentLibraryBindings,
   type ComponentBeforeLibraryBindings
 } from "./component-library-bindings.js";
@@ -20,8 +24,6 @@ import type {
   IrDiagnostic,
   IrDocument,
   IrEasyEdaExtension,
-  IrInstanceAttributeOverride,
-  IrInstanceContext,
   IrProjectConfiguration,
   IrRecordProvenance,
   IrSchematic,
@@ -2367,13 +2369,13 @@ function compileInstance(
       code: "IR_INSTANCE_PATH_INVALID",
       severity: "error",
       message:
-        "INSTANCE 文档 UUID 不符合官方 层级图ID_[$页号|Block符号ID...]_$终端页号 语法，记录未进入实例语义。",
+        "INSTANCE 文档 UUID 既不符合官方页号/Block 编码，也不符合当前导出的页面 ID/Block 编码，记录未进入实例语义。",
       documentType: document.docType
     });
     return;
   }
 
-  const overrides: IrInstanceAttributeOverride[] = [];
+  const overrides: RawInstanceContext["overrides"][number][] = [];
   const modeled = new Set<ReducedV3Record>();
   for (const selected of recordsOfType(records, "INSTANCE_ATTR")) {
     modeled.add(selected);
@@ -2404,9 +2406,16 @@ function compileInstance(
 
   state.instanceContexts.push({
     id: document.uuid,
+    pathEncoding: parsed.path.encoding,
     schematicId: parsed.path.schematicId,
     blockPath: parsed.path.blockPath,
-    terminalSheetNumber: parsed.path.terminalSheetNumber,
+    terminalPageReference: parsed.path.terminalPageReference,
+    ...(parsed.path.terminalSheetNumber === undefined
+      ? {}
+      : { terminalSheetNumber: parsed.path.terminalSheetNumber }),
+    ...(parsed.path.terminalPageId === undefined
+      ? {}
+      : { terminalPageId: parsed.path.terminalPageId }),
     overrides,
     provenance: document.headers.map((header) => ({
       client: header.client,
@@ -2440,7 +2449,7 @@ interface CompilerState {
   readonly schematicTables: IrSchematicTable[];
   readonly variants: IrVariant[];
   readonly componentGroups: IrComponentGroup[];
-  readonly instanceContexts: IrInstanceContext[];
+  readonly instanceContexts: RawInstanceContext[];
   readonly components: ComponentBeforeLibraryBindings[];
   readonly symbols: IrSymbol[];
   readonly symbolParts: IrSymbolPart[];
@@ -2592,7 +2601,7 @@ export function compileV3ToEdaIr(
   );
   const variants = sortById(state.variants);
   const componentGroups = sortById(state.componentGroups);
-  const instanceContexts = sortById(state.instanceContexts);
+  const rawInstanceContexts = sortById(state.instanceContexts);
   const boardIds = new Set(boards.map((board) => board.id));
   const schematicIds = new Set(
     schematics.map((schematic) => schematic.id)
@@ -2605,11 +2614,11 @@ export function compileV3ToEdaIr(
     (document) => document.type === "INSTANCE"
   ).length;
   const instanceDocumentsWithInvalidPath =
-    instanceDocuments - instanceContexts.length;
-  const instanceContextsWithMissingSchematic = instanceContexts.filter(
+    instanceDocuments - rawInstanceContexts.length;
+  const instanceContextsWithMissingSchematic = rawInstanceContexts.filter(
     (context) => !schematicIds.has(context.schematicId)
   ).length;
-  const instanceAttributeOverrides = instanceContexts.reduce(
+  const instanceAttributeOverrides = rawInstanceContexts.reduce(
     (total, context) => total + context.overrides.length,
     0
   );
@@ -2911,6 +2920,44 @@ export function compileV3ToEdaIr(
   );
   const pinInstances = pinInstanceCompilation.pinInstances;
   const pinSummary = pinInstanceCompilation.summary;
+  const instanceResolution = resolveInstanceContexts(rawInstanceContexts, {
+    schematics,
+    pages: schematicPages,
+    components,
+    symbols,
+    pinInstances,
+    devices
+  });
+  const instanceContexts = instanceResolution.contexts;
+  const componentOccurrences = instanceResolution.occurrences;
+  const instanceResolutionSummary = instanceResolution.summary;
+  if (instanceResolutionSummary.unresolvedContexts > 0) {
+    addDiagnostic(
+      state.diagnostics,
+      {
+        code: "IR_INSTANCE_PATH_RESOLUTION_FAILED",
+        severity: "error",
+        message:
+          "INSTANCE 路径中的页面、Block 组件或 Block Symbol 引用未能完整闭环；上下文保留稳定失败状态。",
+        documentType: "INSTANCE"
+      },
+      instanceResolutionSummary.unresolvedContexts
+    );
+  }
+  if (instanceResolutionSummary.unresolvedOverrides > 0) {
+    addDiagnostic(
+      state.diagnostics,
+      {
+        code: "IR_INSTANCE_ATTRIBUTE_TARGET_UNRESOLVED",
+        severity: "warning",
+        message:
+          "INSTANCE_ATTR 目标未能唯一绑定到终端页组件或符号引脚；原始覆盖与稳定失败状态均已保留。",
+        documentType: "INSTANCE",
+        recordType: "INSTANCE_ATTR"
+      },
+      instanceResolutionSummary.unresolvedOverrides
+    );
+  }
   if (pinInstanceCompilation.unresolvedOverrides.length > 0) {
     addDiagnostic(
       state.diagnostics,
@@ -3318,7 +3365,16 @@ export function compileV3ToEdaIr(
     instanceContexts: instanceContexts.length,
     instanceDocumentsWithInvalidPath,
     instanceContextsWithMissingSchematic,
+    instanceContextsResolved: instanceResolutionSummary.resolvedContexts,
+    instanceContextsUnresolved: instanceResolutionSummary.unresolvedContexts,
     instanceAttributeOverrides,
+    instanceAttributeOverridesAppliedToComponents:
+      instanceResolutionSummary.appliedComponentOverrides,
+    instanceAttributeOverridesAppliedToPins:
+      instanceResolutionSummary.appliedPinOverrides,
+    instanceAttributeOverridesUnresolved:
+      instanceResolutionSummary.unresolvedOverrides,
+    componentOccurrences: componentOccurrences.length,
     components: components.length,
     componentsWithDesignator: components.filter((item) => item.designator !== undefined)
       .length,
@@ -3401,7 +3457,7 @@ export function compileV3ToEdaIr(
   };
   const base = {
     schema: "schemcp.eda-ir" as const,
-    schemaVersion: "1.0.0" as const,
+    schemaVersion: "1.1.0" as const,
     generator: {
       name: "@yuanzihao/schemcp" as const,
       version: "0.1.0" as const
@@ -3423,6 +3479,7 @@ export function compileV3ToEdaIr(
     variants,
     componentGroups,
     instanceContexts,
+    componentOccurrences,
     components,
     symbols,
     symbolParts,

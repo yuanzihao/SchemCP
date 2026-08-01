@@ -91,7 +91,7 @@ function assertPublicContract(tools, expectedNames) {
 function createSnapshot(tools, version) {
   return {
     schema: "schemcp.mcp-tools-contract",
-    schemaVersion: "1.0.0",
+    schemaVersion: "1.1.0",
     server: {
       id: "schemcp",
       package: "@yuanzihao/schemcp",

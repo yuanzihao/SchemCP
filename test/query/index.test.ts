@@ -376,13 +376,24 @@ function fixture(): EdaIr {
   const instanceContexts: IrInstanceContext[] = [
     {
       id: "schematic-a_$5|block-a_$1",
+      pathEncoding: "OFFICIAL_SHEET_NUMBER_PIPE_BLOCK_ID",
       schematicId: "schematic-a",
-      blockPath: [{ sheetNumber: "5", blockSymbolId: "block-a" }],
+      blockPath: [
+        {
+          pageReference: "5",
+          sheetNumber: "5",
+          blockSymbolId: "block-a",
+          resolutionStatus: "SOURCE_PAGE_NOT_FOUND"
+        }
+      ],
+      terminalPageReference: "1",
       terminalSheetNumber: "1",
+      resolutionStatus: "SOURCE_PAGE_NOT_FOUND",
       overrides: [
         {
           targetPrimitiveId: "component-2",
           attributes: { Value: "10k" },
+          applicationStatus: "CONTEXT_NOT_RESOLVED",
           provenance: {
             ...PROVENANCE,
             documentId: "schematic-a_$5|block-a_$1",
@@ -398,7 +409,7 @@ function fixture(): EdaIr {
   ];
   return {
     schema: "schemcp.eda-ir",
-    schemaVersion: "1.0.0",
+    schemaVersion: "1.1.0",
     generator: {
       name: "@yuanzihao/schemcp",
       version: "0.1.0"
@@ -420,6 +431,7 @@ function fixture(): EdaIr {
     variants,
     componentGroups,
     instanceContexts,
+    componentOccurrences: [],
     components,
     symbols,
     symbolParts: [],
@@ -487,7 +499,13 @@ function fixture(): EdaIr {
       instanceContexts: instanceContexts.length,
       instanceDocumentsWithInvalidPath: 0,
       instanceContextsWithMissingSchematic: 0,
+      instanceContextsResolved: 0,
+      instanceContextsUnresolved: 1,
       instanceAttributeOverrides: 1,
+      instanceAttributeOverridesAppliedToComponents: 0,
+      instanceAttributeOverridesAppliedToPins: 0,
+      instanceAttributeOverridesUnresolved: 1,
+      componentOccurrences: 0,
       components: components.length,
       componentsWithDesignator: components.length,
       componentsWithDevice: 0,
@@ -545,6 +563,99 @@ function fixture(): EdaIr {
       unmodeledRecords: 0
     },
     irSha256: "c".repeat(64)
+  };
+}
+
+function occurrenceFixture(): EdaIr {
+  const base = fixture();
+  const contextId = "schematic-a_$page-root~block-a_$page-a";
+  const overrideProvenance: IrRecordProvenance = {
+    ...PROVENANCE,
+    documentId: contextId,
+    documentType: "INSTANCE",
+    recordType: "INSTANCE_ATTR",
+    recordId: "component-1"
+  };
+  return {
+    ...base,
+    instanceContexts: [
+      ...base.instanceContexts,
+      {
+        id: contextId,
+        pathEncoding: "OBSERVED_PAGE_ID_TILDE_BLOCK_ID",
+        schematicId: "schematic-a",
+        blockPath: [
+          {
+            pageReference: "page-root",
+            blockSymbolId: "block-a",
+            sourcePageId: "page-root",
+            targetPageId: "page-a",
+            resolutionStatus: "RESOLVED_EXACT"
+          }
+        ],
+        terminalPageReference: "page-a",
+        terminalPageId: "page-a",
+        resolutionStatus: "RESOLVED_EXACT",
+        overrides: [
+          {
+            targetPrimitiveId: "component-1",
+            attributes: { Designator: "R101", Value: "10k" },
+            applicationStatus: "APPLIED_COMPONENT_OCCURRENCE",
+            resolvedTarget: {
+              kind: "COMPONENT",
+              pageId: "page-a",
+              componentId: "component-1"
+            },
+            provenance: overrideProvenance,
+            extensions: { easyeda: {} }
+          }
+        ],
+        provenance: [{ client: "client", entry: "epru", line: 10 }]
+      }
+    ],
+    componentOccurrences: [
+      {
+        id: "occurrence-1",
+        instanceContextId: contextId,
+        schematicId: "schematic-a",
+        pageId: "page-a",
+        componentId: "component-1",
+        designator: "R101",
+        attributes: [
+          {
+            key: "Designator",
+            values: ["R101"],
+            resolution: "INSTANCE_OVERRIDE",
+            provenance: [overrideProvenance]
+          },
+          {
+            key: "Value",
+            values: ["10k"],
+            resolution: "INSTANCE_OVERRIDE",
+            provenance: [overrideProvenance]
+          }
+        ],
+        pinOverrides: [
+          {
+            symbolPinId: "pin-1",
+            attributes: { NO_CONNECT: "yes" },
+            provenance: {
+              ...overrideProvenance,
+              recordId: "component-1pin-1"
+            }
+          }
+        ],
+        populationStatus: "BASE_DESIGN",
+        pathTruth: "EXPLICIT_INSTANCE_DOCUMENT_RESOLVED",
+        electricalTruth: "NOT_VERIFIED"
+      }
+    ],
+    summary: {
+      ...base.summary,
+      instanceContexts: base.instanceContexts.length + 1,
+      instanceContextsResolved: 1,
+      componentOccurrences: 1
+    }
   };
 }
 
@@ -876,6 +987,69 @@ test("组件列表具有确定排序、有界分页和筛选域绑定 cursor", (
     () => index.listComponents({ limit: 51 }),
     (error) => error instanceof QueryError && error.code === "QUERY_INVALID_LIMIT"
   );
+});
+
+test("组件查询按 INSTANCE 上下文返回有效位号、属性和引脚覆盖", () => {
+  const index = new EdaIrQueryIndex(occurrenceFixture());
+  const contextId = "schematic-a_$page-root~block-a_$page-a";
+  const basePage = index.listComponents({ limit: 1 });
+  assert.ok(basePage.nextCursor);
+
+  const page = index.listComponents({
+    instanceContextId: contextId,
+    designatorContains: "r101"
+  });
+  assert.equal(page.total, 1);
+  assert.equal(page.items[0]?.id, "component-1");
+  assert.equal(page.items[0]?.designator, "R101");
+  assert.equal(page.items[0]?.occurrence?.id, "occurrence-1");
+  assert.equal(page.items[0]?.occurrence?.instanceContextId, contextId);
+  assert.throws(
+    () =>
+      index.listComponents({
+        instanceContextId: contextId,
+        limit: 1,
+        cursor: basePage.nextCursor
+      }),
+    (error: unknown) =>
+      error instanceof QueryError && error.code === "QUERY_INVALID_CURSOR"
+  );
+
+  const lookup = index.getComponent({
+    designator: "R101",
+    instanceContextId: contextId
+  });
+  assert.equal(lookup.status, "FOUND");
+  if (lookup.status !== "FOUND") return;
+  assert.deepEqual(
+    lookup.attributes.find((attribute) => attribute.key === "Value"),
+    {
+      key: "Value",
+      values: ["10k"],
+      resolution: "INSTANCE_OVERRIDE",
+      provenance: [
+        {
+          ...PROVENANCE,
+          documentId: contextId,
+          documentType: "INSTANCE",
+          recordType: "INSTANCE_ATTR",
+          recordId: "component-1"
+        }
+      ]
+    }
+  );
+
+  const pins = index.getComponentPins({
+    componentId: "component-1",
+    instanceContextId: contextId
+  });
+  assert.equal(pins.status, "FOUND");
+  if (pins.status === "FOUND" && "pins" in pins) {
+    assert.deepEqual(pins.pins.items[0]?.occurrenceOverrides?.[0]?.attributes, {
+      NO_CONNECT: "yes"
+    });
+    assert.equal(pins.pins.items[1]?.occurrenceOverrides, undefined);
+  }
 });
 
 test("原理图注释查询保持显式文本、分页筛选和来源证据", () => {
@@ -1309,6 +1483,19 @@ test("工程层级查询按显式父引用分页且 cursor 与筛选域绑定", 
     "EXPLICIT_SCHEMATIC_REFERENCE"
   );
   assert.ok(first.nextCursor);
+  const instances = index.listDesignHierarchy({
+    kind: "INSTANCE_CONTEXT",
+    parentId: "schematic-a"
+  });
+  assert.equal(instances.total, 1);
+  assert.equal(
+    instances.items[0]?.relationshipBasis,
+    "EXPLICIT_INSTANCE_DOCUMENT_PATH"
+  );
+  assert.equal(
+    instances.items[0]?.resolutionStatus,
+    "SOURCE_PAGE_NOT_FOUND"
+  );
   assert.throws(
     () =>
       index.listDesignHierarchy({
@@ -1404,7 +1591,7 @@ test("变体覆盖仅精确匹配 INSTANCE 文档 ID 且不应用目标属性", 
   );
 });
 
-test("INSTANCE 上下文按显式 Schematic 分页并返回未应用原始覆盖", () => {
+test("INSTANCE 上下文按显式 Schematic 分页并返回稳定解析状态", () => {
   const index = new EdaIrQueryIndex(fixture());
   const contexts = index.listInstanceContexts({
     schematicId: "schematic-a",
@@ -1413,12 +1600,22 @@ test("INSTANCE 上下文按显式 Schematic 分页并返回未应用原始覆盖
   assert.equal(contexts.total, 1);
   assert.deepEqual(contexts.items[0], {
     id: "schematic-a_$5|block-a_$1",
+    pathEncoding: "OFFICIAL_SHEET_NUMBER_PIPE_BLOCK_ID",
     schematicId: "schematic-a",
-    blockPath: [{ sheetNumber: "5", blockSymbolId: "block-a" }],
+    blockPath: [
+      {
+        pageReference: "5",
+        sheetNumber: "5",
+        blockSymbolId: "block-a",
+        resolutionStatus: "SOURCE_PAGE_NOT_FOUND"
+      }
+    ],
+    terminalPageReference: "1",
     terminalSheetNumber: "1",
+    resolutionStatus: "SOURCE_PAGE_NOT_FOUND",
     overrideCount: 1,
-    pathBasis: "EXPLICIT_INSTANCE_DOCUMENT_UUID",
-    sheetResolution: "NOT_VERIFIED"
+    occurrenceCount: 0,
+    pathBasis: "OFFICIAL_INSTANCE_DOCUMENT_UUID"
   });
 
   const lookup = index.getInstanceContext({
@@ -1431,9 +1628,9 @@ test("INSTANCE 上下文按显式 Schematic 分页并返回未应用原始覆盖
   assert.deepEqual(lookup.overrides.items[0]?.attributes, { Value: "10k" });
   assert.equal(
     lookup.overrides.items[0]?.applicationStatus,
-    "NOT_APPLIED_TARGET_RESOLUTION_UNVERIFIED"
+    "CONTEXT_NOT_RESOLVED"
   );
-  assert.equal(lookup.targetResolution, "NOT_VERIFIED");
+  assert.equal(lookup.targetResolution, "SOURCE_PAGE_NOT_FOUND");
   assert.equal(
     index.getInstanceContext({ contextId: "missing" }).status,
     "NOT_FOUND"

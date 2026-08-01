@@ -71,7 +71,8 @@
     "verify:mcp": "node dist/src/verification/verify-mcp.js",
     "verify:mcp-reference": "npm run build && node scripts/generate-mcp-reference.mjs --check",
     "verify:third-party-notices": "node scripts/generate-third-party-notices.mjs --check",
-    "verify:package": "npm run build && node dist/src/verification/verify-package.js"
+    "verify:package": "npm run build && node dist/src/verification/verify-package.js",
+    "verify:real-projects": "npm run build && node dist/src/verification/verify-real-projects.js"
   },
   "dependencies": {
     "@hono/node-server": "2.0.12",

@@ -225,7 +225,7 @@ function ir(
   const symbolTexts = options.symbolTexts ?? [];
   return {
     schema: "schemcp.eda-ir",
-    schemaVersion: "1.0.0",
+    schemaVersion: "1.1.0",
     generator: {
       name: "@yuanzihao/schemcp",
       version: "0.1.0"
@@ -247,6 +247,7 @@ function ir(
     variants: [],
     componentGroups: [],
     instanceContexts: [],
+    componentOccurrences: [],
     components,
     symbols: [],
     symbolParts: [],

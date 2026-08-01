@@ -290,24 +290,111 @@ export interface IrComponentGroup {
 }
 
 export interface IrInstanceBlockPathSegment {
-  readonly sheetNumber: string;
+  readonly pageReference: string;
   readonly blockSymbolId: string;
+  readonly sheetNumber?: string;
+  readonly sourcePageId?: string;
+  readonly targetPageId?: string;
+  readonly resolutionStatus:
+    | "RESOLVED_EXACT"
+    | "SOURCE_PAGE_NOT_FOUND"
+    | "SOURCE_PAGE_AMBIGUOUS"
+    | "SOURCE_PAGE_SCHEMATIC_MISMATCH"
+    | "BLOCK_COMPONENT_NOT_FOUND"
+    | "BLOCK_COMPONENT_AMBIGUOUS"
+    | "BLOCK_SYMBOL_REFERENCE_UNRESOLVED"
+    | "BLOCK_SYMBOL_TYPE_MISMATCH"
+    | "TARGET_PAGE_NOT_FOUND"
+    | "TARGET_PAGE_AMBIGUOUS"
+    | "TARGET_PAGE_SCHEMATIC_MISMATCH"
+    | "PAGE_CYCLE_DETECTED";
 }
+
+export type IrInstanceAttributeApplicationStatus =
+  | "APPLIED_COMPONENT_OCCURRENCE"
+  | "APPLIED_PIN_OCCURRENCE"
+  | "CONTEXT_NOT_RESOLVED"
+  | "TARGET_NOT_FOUND"
+  | "TARGET_PIN_NOT_FOUND"
+  | "TARGET_AMBIGUOUS";
 
 export interface IrInstanceAttributeOverride {
   readonly targetPrimitiveId: string;
   readonly attributes: JsonObject;
+  readonly applicationStatus: IrInstanceAttributeApplicationStatus;
+  readonly resolvedTarget?:
+    | {
+        readonly kind: "COMPONENT";
+        readonly pageId: string;
+        readonly componentId: string;
+      }
+    | {
+        readonly kind: "PIN";
+        readonly pageId: string;
+        readonly componentId: string;
+        readonly symbolPinId: string;
+      };
   readonly provenance: IrRecordProvenance;
   readonly extensions: IrEasyEdaExtension;
 }
 
 export interface IrInstanceContext {
   readonly id: string;
+  readonly pathEncoding:
+    | "OFFICIAL_SHEET_NUMBER_PIPE_BLOCK_ID"
+    | "OBSERVED_PAGE_ID_TILDE_BLOCK_ID";
   readonly schematicId: string;
   readonly blockPath: readonly IrInstanceBlockPathSegment[];
-  readonly terminalSheetNumber: string;
+  readonly terminalPageReference: string;
+  readonly terminalSheetNumber?: string;
+  readonly terminalPageId?: string;
+  readonly resolutionStatus:
+    | "RESOLVED_EXACT"
+    | "SCHEMATIC_NOT_FOUND"
+    | "SOURCE_PAGE_NOT_FOUND"
+    | "SOURCE_PAGE_AMBIGUOUS"
+    | "SOURCE_PAGE_SCHEMATIC_MISMATCH"
+    | "BLOCK_COMPONENT_NOT_FOUND"
+    | "BLOCK_COMPONENT_AMBIGUOUS"
+    | "BLOCK_SYMBOL_REFERENCE_UNRESOLVED"
+    | "BLOCK_SYMBOL_TYPE_MISMATCH"
+    | "TERMINAL_PAGE_NOT_FOUND"
+    | "TERMINAL_PAGE_AMBIGUOUS"
+    | "TERMINAL_PAGE_SCHEMATIC_MISMATCH"
+    | "PAGE_CYCLE_DETECTED";
   readonly overrides: readonly IrInstanceAttributeOverride[];
   readonly provenance: readonly IrDocumentHeaderProvenance[];
+}
+
+export interface IrEffectiveAttribute {
+  readonly key: string;
+  readonly values: readonly JsonValue[];
+  readonly resolution:
+    | "DEVICE_DEFAULT"
+    | "COMPONENT_EXPLICIT"
+    | "COMPONENT_CONFLICT"
+    | "INSTANCE_OVERRIDE";
+  readonly provenance: readonly IrRecordProvenance[];
+}
+
+export interface IrComponentOccurrencePinOverride {
+  readonly symbolPinId: string;
+  readonly attributes: JsonObject;
+  readonly provenance: IrRecordProvenance;
+}
+
+export interface IrComponentOccurrence {
+  readonly id: string;
+  readonly instanceContextId: string;
+  readonly schematicId: string;
+  readonly pageId: string;
+  readonly componentId: string;
+  readonly designator?: string;
+  readonly attributes: readonly IrEffectiveAttribute[];
+  readonly pinOverrides: readonly IrComponentOccurrencePinOverride[];
+  readonly populationStatus: "BASE_DESIGN";
+  readonly pathTruth: "EXPLICIT_INSTANCE_DOCUMENT_RESOLVED";
+  readonly electricalTruth: "NOT_VERIFIED";
 }
 
 export type IrComponentLibraryBindingKey = "Symbol" | "Footprint";
@@ -678,7 +765,13 @@ export interface EdaIrSummary {
   readonly instanceContexts: number;
   readonly instanceDocumentsWithInvalidPath: number;
   readonly instanceContextsWithMissingSchematic: number;
+  readonly instanceContextsResolved: number;
+  readonly instanceContextsUnresolved: number;
   readonly instanceAttributeOverrides: number;
+  readonly instanceAttributeOverridesAppliedToComponents: number;
+  readonly instanceAttributeOverridesAppliedToPins: number;
+  readonly instanceAttributeOverridesUnresolved: number;
+  readonly componentOccurrences: number;
   readonly components: number;
   readonly componentsWithDesignator: number;
   readonly componentsWithDevice: number;
@@ -734,7 +827,7 @@ export interface EdaIrSummary {
 
 export interface EdaIr {
   readonly schema: "schemcp.eda-ir";
-  readonly schemaVersion: "1.0.0";
+  readonly schemaVersion: "1.1.0";
   readonly generator: {
     readonly name: "@yuanzihao/schemcp";
     readonly version: "0.1.0";
@@ -756,6 +849,7 @@ export interface EdaIr {
   readonly variants: readonly IrVariant[];
   readonly componentGroups: readonly IrComponentGroup[];
   readonly instanceContexts: readonly IrInstanceContext[];
+  readonly componentOccurrences: readonly IrComponentOccurrence[];
   readonly components: readonly IrComponent[];
   readonly symbols: readonly IrSymbol[];
   readonly symbolParts: readonly IrSymbolPart[];

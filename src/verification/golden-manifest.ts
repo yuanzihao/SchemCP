@@ -7,7 +7,7 @@ import type {
 } from "../ir/model.js";
 import { canonicalJson, sha256CanonicalJson } from "../core/canonical-json.js";
 
-export const GOLDEN_MANIFEST_SCHEMA_VERSION = "1.0.0" as const;
+export const GOLDEN_MANIFEST_SCHEMA_VERSION = "1.1.0" as const;
 export const DEFAULT_GOLDEN_MANIFEST_MAX_BYTES = 1024 * 1024;
 export const DEFAULT_GOLDEN_MANIFEST_MAX_JSON_DEPTH = 32;
 
@@ -76,7 +76,13 @@ const SUMMARY_KEYS = [
   "instanceContexts",
   "instanceDocumentsWithInvalidPath",
   "instanceContextsWithMissingSchematic",
+  "instanceContextsResolved",
+  "instanceContextsUnresolved",
   "instanceAttributeOverrides",
+  "instanceAttributeOverridesAppliedToComponents",
+  "instanceAttributeOverridesAppliedToPins",
+  "instanceAttributeOverridesUnresolved",
+  "componentOccurrences",
   "components",
   "componentsWithDesignator",
   "componentsWithDevice",

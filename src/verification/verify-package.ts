@@ -769,16 +769,81 @@ async function main(): Promise<void> {
           "MCP_ASSEMBLY_MANIFEST_INVALID"
         );
       } else {
-        const opened = await client.callTool({
-          name: "open_schematic_project",
-          arguments: { projectPath: projectArgument }
-        });
-        assert.equal(opened.isError, undefined);
-        const components = await client.callTool({
-          name: "list_components",
-          arguments: { limit: 1 }
-        });
-        assert.equal(components.isError, undefined);
+        const opened = structured(
+          await client.callTool({
+            name: "open_schematic_project",
+            arguments: { projectPath: projectArgument }
+          })
+        );
+        assert.equal(opened.ok, true);
+        const contexts = structured(
+          await client.callTool({
+            name: "list_instance_contexts",
+            arguments: { limit: 50 }
+          })
+        );
+        const resolvedContext = (
+          contexts.page as {
+            readonly items: readonly {
+              readonly id: string;
+              readonly occurrenceCount: number;
+              readonly resolutionStatus: string;
+            }[];
+          }
+        ).items.find(
+          (context) => context.resolutionStatus === "RESOLVED_EXACT"
+        );
+        assert.ok(resolvedContext, "真实工程必须包含已解析 INSTANCE 上下文");
+        assert.ok(resolvedContext.occurrenceCount > 0);
+        const detail = structured(
+          await client.callTool({
+            name: "get_instance_context",
+            arguments: { contextId: resolvedContext.id, limit: 50 }
+          })
+        );
+        assert.equal(
+          (detail.lookup as { readonly status: string }).status,
+          "FOUND"
+        );
+        const components = structured(
+          await client.callTool({
+            name: "list_components",
+            arguments: {
+              instanceContextId: resolvedContext.id,
+              limit: 50
+            }
+          })
+        );
+        const componentPage = components.page as {
+          readonly total: number;
+          readonly items: readonly {
+            readonly id: string;
+            readonly occurrence?: { readonly instanceContextId: string };
+          }[];
+        };
+        assert.equal(componentPage.total, resolvedContext.occurrenceCount);
+        const selected = componentPage.items[0];
+        assert.ok(selected);
+        assert.equal(
+          selected.occurrence?.instanceContextId,
+          resolvedContext.id
+        );
+        for (const tool of ["get_component", "get_component_pins"] as const) {
+          const result = structured(
+            await client.callTool({
+              name: tool,
+              arguments: {
+                componentId: selected.id,
+                instanceContextId: resolvedContext.id,
+                ...(tool === "get_component_pins" ? { limit: 50 } : {})
+              }
+            })
+          );
+          assert.equal(
+            (result.lookup as { readonly status: string }).status,
+            "FOUND"
+          );
+        }
       }
     } finally {
       await client.close();
@@ -798,6 +863,8 @@ async function main(): Promise<void> {
         toolCount: MCP_TOOL_NAMES.length,
         pcbToolCount: 0,
         projectQuery: projectArgument === undefined ? "SYNTHETIC_VERIFIED" : "VERIFIED",
+        realHierarchyQuery:
+          projectArgument === undefined ? "NOT_REQUESTED" : "VERIFIED",
         syntheticNetlistBinding:
           projectArgument === undefined ? "VERIFIED" : "NOT_REQUESTED",
         syntheticAssemblyTamper:

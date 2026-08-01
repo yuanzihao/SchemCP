@@ -1,6 +1,6 @@
 {
   "schema": "schemcp.mcp-tools-contract",
-  "schemaVersion": "1.0.0",
+  "schemaVersion": "1.1.0",
   "server": {
     "id": "schemcp",
     "package": "@yuanzihao/schemcp",
@@ -1002,7 +1002,7 @@
         "openWorldHint": false,
         "readOnlyHint": true
       },
-      "description": "分页返回工程配置、Board、Schematic 和 Sheet 节点。父子关系只来自归档成员关系或 META 中的显式引用，不根据名称猜测。",
+      "description": "分页返回工程配置、Board、Schematic、Sheet 和显式 INSTANCE 上下文节点。父子关系只来自归档成员关系、META 引用或已校验 INSTANCE 路径，不根据名称猜测。",
       "inputSchema": {
         "$schema": "http://json-schema.org/draft-07/schema#",
         "properties": {
@@ -1016,7 +1016,8 @@
               "PROJECT_CONFIGURATION",
               "BOARD",
               "SCHEMATIC",
-              "SHEET"
+              "SHEET",
+              "INSTANCE_CONTEXT"
             ],
             "type": "string"
           },
@@ -1065,7 +1066,7 @@
         "openWorldHint": false,
         "readOnlyHint": true
       },
-      "description": "解析并分页返回官方 INSTANCE 文档 UUID 中的 Schematic、Block 路径和终端页号。页号保留为标识符，不推断为 SCH_PAGE。",
+      "description": "兼容官方页号编码和当前导出的页面 ID/Block 编码，分页返回已校验的层级路径、终端页、解析状态和有效组件实例数量。",
       "inputSchema": {
         "$schema": "http://json-schema.org/draft-07/schema#",
         "properties": {
@@ -1119,7 +1120,7 @@
         "openWorldHint": false,
         "readOnlyHint": true
       },
-      "description": "通过精确 INSTANCE 文档 ID 获取路径，并分页返回 INSTANCE_ATTR 原始属性。目标图元尚未解析，覆盖不会被应用。",
+      "description": "通过精确 INSTANCE 文档 ID 获取已校验路径，并分页返回每条 INSTANCE_ATTR 的应用状态与精确目标；未解析项保留稳定原因，不会被猜测应用。",
       "inputSchema": {
         "$schema": "http://json-schema.org/draft-07/schema#",
         "properties": {
@@ -1176,7 +1177,7 @@
         "openWorldHint": false,
         "readOnlyHint": true
       },
-      "description": "按确定顺序分页列出组件，可按页面和位号子串筛选。摘要直接包含器件/符号名称、显式 LCSC 或制造商+MPN 身份以及工程 Datasheet 链接数量，便于 AI 先建立面向人的器件目录；完整参数和链接使用 get_component。",
+      "description": "按确定顺序分页列出组件，可按页面、位号子串和层级实例上下文筛选。指定 instanceContextId 后返回该实例中的有效位号和属性来源；完整参数和链接使用 get_component。",
       "inputSchema": {
         "$schema": "http://json-schema.org/draft-07/schema#",
         "properties": {
@@ -1187,6 +1188,12 @@
           },
           "designatorContains": {
             "description": "不区分大小写的位号子串",
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          },
+          "instanceContextId": {
+            "description": "可选精确 INSTANCE 上下文 ID",
             "maxLength": 128,
             "minLength": 1,
             "type": "string"
@@ -1990,7 +1997,7 @@
         "openWorldHint": false,
         "readOnlyHint": true
       },
-      "description": "通过组件 ID 或精确位号获取组件；返回器件/符号名称、精确身份、组件属性优先于 Device 默认值的全部显式参数、工程 Datasheet HTTPS 链接和由显式 C-ID 生成的商城入口。重复位号不会被静默选择；链接来源真实性与在线目录匹配状态会单独标注。",
+      "description": "通过组件 ID 或精确位号获取基础组件，也可指定 instanceContextId 获取层级实例中已应用 INSTANCE_ATTR 后的有效组件。重复位号不会被静默选择；属性来源、链接真实性与在线目录匹配状态会单独标注。",
       "inputSchema": {
         "$schema": "http://json-schema.org/draft-07/schema#",
         "properties": {
@@ -2002,6 +2009,12 @@
           },
           "designator": {
             "description": "精确位号；与 componentId 二选一，重复时返回歧义",
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          },
+          "instanceContextId": {
+            "description": "可选精确 INSTANCE 上下文 ID；指定后返回该层级实例中的有效组件属性",
             "maxLength": 128,
             "minLength": 1,
             "type": "string"
@@ -2045,7 +2058,7 @@
         "openWorldHint": false,
         "readOnlyHint": true
       },
-      "description": "分页返回组件引脚实例、变换后的连接点及显式网络几何候选。候选尚未通过官方网表验证。",
+      "description": "分页返回组件引脚实例、变换后的连接点及显式网络几何候选；指定 instanceContextId 时同时返回已精确绑定的引脚实例覆盖。候选尚未通过官方网表验证。",
       "inputSchema": {
         "$schema": "http://json-schema.org/draft-07/schema#",
         "properties": {
@@ -2062,6 +2075,12 @@
           },
           "designator": {
             "description": "精确位号；与 componentId 二选一，重复时返回歧义",
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          },
+          "instanceContextId": {
+            "description": "可选精确 INSTANCE 上下文 ID；指定后返回该层级实例中的有效组件属性",
             "maxLength": 128,
             "minLength": 1,
             "type": "string"

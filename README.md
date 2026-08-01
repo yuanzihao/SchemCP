@@ -27,10 +27,10 @@ npm 包：`@yuanzihao/schemcp`
 ## 为什么使用 SchemCP
 
 - **离线原理图解析**：输入是本地 `.epro2`，普通查询不依赖在线服务。
-- **稳定中间表示**：公开 EDA-IR 固定标识为 `schemcp.eda-ir` 1.0.0，并对确定性内容计算哈希。
+- **稳定中间表示**：公开 EDA-IR 固定标识为 `schemcp.eda-ir` 1.1.0，并对确定性内容计算哈希。
 - **附件优先**：MCP 可以无工程启动，用户在对话中提供文件后再显式打开。
 - **多工程工作区**：一个会话最多打开 4 个工程，并可建立用户声明的装配关系。
-- **精确器件上下文**：查询位号、器件标题、制造商、MPN、立创商城 C-ID、Datasheet 链接、引脚、实例属性和网络证据。
+- **精确器件上下文**：兼容两种 INSTANCE 路径编码，查询基础组件或指定层级实例中的有效位号、属性、引脚覆盖和网络证据。
 - **可选 `.enet`**：用户可按工程附加网表，以精确核对引脚—网络端点。
 - **事实边界明确**：工程事实、器件事实和工程推断分开返回，不把几何候选冒充完整电气真值。
 - **只读且有界**：工具使用分页、稳定错误码和输入限额；不会修改原理图或生成代码。
@@ -190,7 +190,7 @@ schemcp mcp-config --client claude-code
 2. 在 MCP 客户端中附加或选择这个 `.epro2` 文件。
 3. 将客户端提供的精确绝对路径传给 `open_schematic_project`。
 4. 调用 `list_schematic_projects` 获取 `projectHandle`。
-5. 调用 `list_design_hierarchy`、`list_components`、`get_component` 和 `get_component_pins` 查询原理图。
+5. 调用 `list_design_hierarchy` 和 `list_instance_contexts` 获取 Sheet 与 INSTANCE；需要层级实例有效属性时，把返回的 `instanceContextId` 传给 `list_components`、`get_component` 或 `get_component_pins`。
 6. 需要严格引脚—网络核对时，再用 `attach_schematic_netlist` 为对应工程附加 `.enet`。
 
 推荐给模型的首条提示：

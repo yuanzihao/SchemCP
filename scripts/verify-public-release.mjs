@@ -100,7 +100,7 @@ for (const relativePath of [
 }
 
 assert.equal(mcpContract.schema, "schemcp.mcp-tools-contract");
-assert.equal(mcpContract.schemaVersion, "1.0.0");
+assert.equal(mcpContract.schemaVersion, "1.1.0");
 assert.equal(mcpContract.server.id, "schemcp");
 assert.equal(mcpContract.server.package, packageJson.name);
 assert.equal(mcpContract.server.version, packageJson.version);

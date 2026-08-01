@@ -4,13 +4,20 @@
 
 ## [Unreleased]
 
+### Added
+
+- 兼容官方页号/Block 与当前页面 ID/Block 两种 INSTANCE 路径编码，并确定性校验页面、Block Component、Block Symbol、循环和歧义；
+- 将 `INSTANCE_ATTR` 精确应用到有效组件实例或引脚实例，未解析目标保留稳定原因；
+- `list_design_hierarchy`、`list_components`、`get_component` 和 `get_component_pins` 支持层级实例上下文查询；
+- 新增仓库外私有清单驱动的 `verify:real-projects`，冻结真实工程输入、网表差异、诊断和安装态 MCP 调用门禁。
+
 ### Changed
 
 - 明确项目只维护嘉立创 EDA 专业版 `.epro2` 原理图解析，其他 EDA 原理图格式暂无支持计划；第三方工程建议先导入嘉立创 EDA 专业版并人工核对后再解析。
 
 ### Planned
 
-- 完善原理图层级实例、Variant/DNP 和显式总线语义；
+- 完善显式总线、`Add into BOM=no` 的 DNP、引脚完整性和 P2 资源语义；
 - 在不提交私有工程的前提下继续扩大格式回归覆盖。
 
 ## [0.1.0] - 2026-07-31

@@ -230,7 +230,7 @@ const EPRU = [
   record(
     {
       type: "GROUP_DATA",
-      id: "component-a@schematic-a_$1",
+      id: "component-a@schematic-a_$page-a",
       ticket: 17
     },
     { DNP: "yes" }
@@ -240,7 +240,7 @@ const EPRU = [
     {
       docType: "INSTANCE",
       client: "client-a",
-      uuid: "schematic-a_$1"
+      uuid: "schematic-a_$page-a"
     }
   ),
   record(
@@ -815,6 +815,68 @@ test("MCP 无工程启动后可直接打开对话附件并安全关闭", async (
         }
       ).summary.components,
       1
+    );
+
+    const contexts = structured(
+      await client.callTool({
+        name: "list_instance_contexts",
+        arguments: {}
+      })
+    );
+    const contextItems = (
+      contexts.page as {
+        readonly items: readonly {
+          readonly id: string;
+          readonly resolutionStatus: string;
+          readonly occurrenceCount: number;
+        }[];
+      }
+    ).items;
+    assert.equal(contextItems.length, 1);
+    assert.equal(contextItems[0]?.resolutionStatus, "RESOLVED_EXACT");
+    assert.equal(contextItems[0]?.occurrenceCount, 1);
+    const instanceContextId = contextItems[0]?.id;
+    assert.ok(instanceContextId);
+
+    const occurrenceComponents = structured(
+      await client.callTool({
+        name: "list_components",
+        arguments: { instanceContextId }
+      })
+    );
+    const occurrenceItems = (
+      occurrenceComponents.page as {
+        readonly items: readonly {
+          readonly designator: string;
+          readonly occurrence: { readonly instanceContextId: string };
+        }[];
+      }
+    ).items;
+    assert.equal(occurrenceItems.length, 1);
+    assert.equal(occurrenceItems[0]?.designator, "U1");
+    assert.equal(
+      occurrenceItems[0]?.occurrence.instanceContextId,
+      instanceContextId
+    );
+
+    const effectiveComponent = structured(
+      await client.callTool({
+        name: "get_component",
+        arguments: { designator: "U1", instanceContextId }
+      })
+    );
+    const effectiveLookup = effectiveComponent.lookup as {
+      readonly status: string;
+      readonly attributes: readonly {
+        readonly key: string;
+        readonly resolution: string;
+      }[];
+    };
+    assert.equal(effectiveLookup.status, "FOUND");
+    assert.equal(
+      effectiveLookup.attributes.find((attribute) => attribute.key === "Value")
+        ?.resolution,
+      "INSTANCE_OVERRIDE"
     );
 
     const closed = structured(

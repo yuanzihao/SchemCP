@@ -253,7 +253,7 @@ test("将原理图、符号、引脚、器件和显式导线编译为可追溯 E
   const ir = compileV3ToEdaIr(reducer, ARCHIVE_SHA);
 
   assert.equal(ir.schema, "schemcp.eda-ir");
-  assert.equal(ir.schemaVersion, "1.0.0");
+  assert.equal(ir.schemaVersion, "1.1.0");
   assert.equal(ir.source.archiveSha256, ARCHIVE_SHA);
   assert.equal(ir.source.electricalTruth, "NOT_VERIFIED");
   assert.deepEqual(ir.summary, {
@@ -307,7 +307,13 @@ test("将原理图、符号、引脚、器件和显式导线编译为可追溯 E
     instanceContexts: 1,
     instanceDocumentsWithInvalidPath: 0,
     instanceContextsWithMissingSchematic: 0,
+    instanceContextsResolved: 0,
+    instanceContextsUnresolved: 1,
     instanceAttributeOverrides: 2,
+    instanceAttributeOverridesAppliedToComponents: 0,
+    instanceAttributeOverridesAppliedToPins: 0,
+    instanceAttributeOverridesUnresolved: 2,
+    componentOccurrences: 0,
     components: 1,
     componentsWithDesignator: 1,
     componentsWithDevice: 1,
@@ -416,13 +422,26 @@ test("将原理图、符号、引脚、器件和显式导线编译为可追溯 E
   assert.deepEqual(ir.instanceContexts, [
     {
       id: "schematic-1_$5|block-a_$01",
+      pathEncoding: "OFFICIAL_SHEET_NUMBER_PIPE_BLOCK_ID",
       schematicId: "schematic-1",
-      blockPath: [{ sheetNumber: "5", blockSymbolId: "block-a" }],
+      blockPath: [
+        {
+          pageReference: "5",
+          sheetNumber: "5",
+          blockSymbolId: "block-a",
+          targetPageId: "page-1",
+          resolutionStatus: "SOURCE_PAGE_NOT_FOUND"
+        }
+      ],
+      terminalPageReference: "01",
       terminalSheetNumber: "01",
+      terminalPageId: "page-1",
+      resolutionStatus: "SOURCE_PAGE_NOT_FOUND",
       overrides: [
         {
           targetPrimitiveId: "component-1",
           attributes: { Designator: "U1A" },
+          applicationStatus: "CONTEXT_NOT_RESOLVED",
           provenance: {
             documentId: "schematic-1_$5|block-a_$01",
             documentType: "INSTANCE",
@@ -438,6 +457,7 @@ test("将原理图、符号、引脚、器件和显式导线编译为可追溯 E
         {
           targetPrimitiveId: "component-1pin-1",
           attributes: { NO_CONNECT: "yes" },
+          applicationStatus: "CONTEXT_NOT_RESOLVED",
           provenance: {
             documentId: "schematic-1_$5|block-a_$01",
             documentType: "INSTANCE",
@@ -544,7 +564,7 @@ test("原理图页 TEXT 只保留显式内容与原始位置，不执行语义�
   });
 
   const ir = compileV3ToEdaIr(reducer, ARCHIVE_SHA);
-  assert.equal(ir.schemaVersion, "1.0.0");
+  assert.equal(ir.schemaVersion, "1.1.0");
   assert.equal(ir.generator.version, "0.1.0");
   assert.equal(ir.summary.schematicAnnotations, 2);
   assert.equal(ir.summary.schematicAnnotationsWithExplicitText, 1);
@@ -634,7 +654,7 @@ test("符号 TEXT 保留显式内容并严格绑定同文档 PART", () => {
   });
 
   const ir = compileV3ToEdaIr(reducer, ARCHIVE_SHA);
-  assert.equal(ir.schemaVersion, "1.0.0");
+  assert.equal(ir.schemaVersion, "1.1.0");
   assert.equal(ir.generator.version, "0.1.0");
   assert.equal(ir.summary.symbolTexts, 3);
   assert.equal(ir.summary.symbolTextsWithExplicitText, 2);
@@ -1329,7 +1349,7 @@ test("编译 SCH_PAGE/SYMBOL 五类显式图形并兼容两种 POLY 点编码", 
   });
 
   const ir = compileV3ToEdaIr(reducer, ARCHIVE_SHA);
-  assert.equal(ir.schemaVersion, "1.0.0");
+  assert.equal(ir.schemaVersion, "1.1.0");
   assert.equal(ir.generator.version, "0.1.0");
   assert.equal(ir.summary.schematicGraphicPrimitives, 7);
   assert.equal(ir.summary.schematicGraphicPrimitivesInPages, 3);
@@ -1446,5 +1466,128 @@ test("拒绝非法原理图图形并保留来源", () => {
         diagnostic.recordType === "CIRCLE"
     )?.count,
     1
+  );
+});
+
+test("解析当前导出的层级实例路径并应用组件实例覆盖", () => {
+  const reducer = new V3Reducer(LIMITS);
+  const schematic = enter(reducer, "sch-hierarchy", "SCH", 1);
+  accept(reducer, schematic, 2, "META", undefined, {
+    name: "Hierarchy",
+    board: ""
+  });
+
+  const blockSymbol = enter(reducer, "symbol-block", "SYMBOL", 3);
+  accept(reducer, blockSymbol, 4, "META", undefined, {
+    title: "Block",
+    docType: 17
+  });
+
+  const parent = enter(reducer, "page-parent", "SCH_PAGE", 5);
+  accept(reducer, parent, 6, "META", undefined, {
+    name: "Parent",
+    schematic: "sch-hierarchy"
+  });
+  accept(reducer, parent, 7, "COMPONENT", "block-1", {
+    partId: "",
+    positionX: 0,
+    positionY: 0,
+    rotation: 0,
+    isMirror: false
+  });
+  attribute(
+    reducer,
+    parent,
+    8,
+    "attr-block-symbol",
+    "block-1",
+    "Symbol",
+    "symbol-block"
+  );
+
+  const child = enter(reducer, "page-child", "SCH_PAGE", 9);
+  accept(reducer, child, 10, "META", undefined, {
+    name: "Child",
+    schematic: "sch-hierarchy"
+  });
+  accept(reducer, child, 11, "COMPONENT", "component-child", {
+    partId: "",
+    positionX: 10,
+    positionY: 20,
+    rotation: 0,
+    isMirror: false
+  });
+  attribute(
+    reducer,
+    child,
+    12,
+    "attr-child-designator",
+    "component-child",
+    "Designator",
+    "R1"
+  );
+
+  const instance = enter(
+    reducer,
+    "sch-hierarchy_$page-parent~block-1_$page-child",
+    "INSTANCE",
+    13
+  );
+  accept(
+    reducer,
+    instance,
+    14,
+    "INSTANCE_ATTR",
+    "component-child",
+    { Designator: "R101", Value: "10k" }
+  );
+  accept(reducer, instance, 15, "INSTANCE_ATTR", "missing-target", {
+    Value: "orphan"
+  });
+
+  const ir = compileV3ToEdaIr(reducer, ARCHIVE_SHA);
+  assert.equal(ir.summary.instanceContextsResolved, 1);
+  assert.equal(ir.summary.instanceContextsUnresolved, 0);
+  assert.equal(ir.summary.instanceAttributeOverridesAppliedToComponents, 1);
+  assert.equal(ir.summary.instanceAttributeOverridesUnresolved, 1);
+  assert.equal(ir.summary.componentOccurrences, 1);
+  assert.deepEqual(ir.instanceContexts[0], {
+    id: "sch-hierarchy_$page-parent~block-1_$page-child",
+    pathEncoding: "OBSERVED_PAGE_ID_TILDE_BLOCK_ID",
+    schematicId: "sch-hierarchy",
+    blockPath: [
+      {
+        pageReference: "page-parent",
+        blockSymbolId: "block-1",
+        sourcePageId: "page-parent",
+        targetPageId: "page-child",
+        resolutionStatus: "RESOLVED_EXACT"
+      }
+    ],
+    terminalPageReference: "page-child",
+    terminalPageId: "page-child",
+    resolutionStatus: "RESOLVED_EXACT",
+    overrides: ir.instanceContexts[0]?.overrides,
+    provenance: [{ client: "client-a", entry: "epru-1", line: 13 }]
+  });
+  assert.equal(
+    ir.instanceContexts[0]?.overrides[0]?.applicationStatus,
+    "APPLIED_COMPONENT_OCCURRENCE"
+  );
+  assert.equal(
+    ir.instanceContexts[0]?.overrides[1]?.applicationStatus,
+    "TARGET_NOT_FOUND"
+  );
+  assert.equal(ir.componentOccurrences[0]?.designator, "R101");
+  assert.deepEqual(
+    ir.componentOccurrences[0]?.attributes.find(
+      (attribute) => attribute.key === "Value"
+    ),
+    {
+      key: "Value",
+      values: ["10k"],
+      resolution: "INSTANCE_OVERRIDE",
+      provenance: [ir.instanceContexts[0]?.overrides[0]?.provenance]
+    }
   );
 });
