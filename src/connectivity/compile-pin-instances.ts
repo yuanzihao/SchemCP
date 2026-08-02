@@ -539,6 +539,7 @@ export function compilePinInstances(
         symbolId: component.symbolId,
         symbolPinId: pin.id,
         partId: component.partId,
+        ...(pin.display === undefined ? {} : { display: pin.display }),
         endpointKind,
         ...(symbol.symbolType === undefined
           ? {}

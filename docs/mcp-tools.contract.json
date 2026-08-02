@@ -1177,10 +1177,19 @@
         "openWorldHint": false,
         "readOnlyHint": true
       },
-      "description": "按确定顺序分页列出组件，可按页面、位号子串和层级实例上下文筛选。指定 instanceContextId 后返回该实例中的有效位号和属性来源；完整参数和链接使用 get_component。",
+      "description": "按确定顺序分页列出组件，可按页面、位号、层级实例、装配状态和引脚完整性筛选。Add into BOM=yes/no 分别形成 POPULATED/DNP；缺失、冲突、非法或未应用 Variant 返回 UNKNOWN。",
       "inputSchema": {
         "$schema": "http://json-schema.org/draft-07/schema#",
         "properties": {
+          "assemblyStatus": {
+            "description": "可选有效装配状态",
+            "enum": [
+              "POPULATED",
+              "DNP",
+              "UNKNOWN"
+            ],
+            "type": "string"
+          },
           "cursor": {
             "description": "上一页返回的不透明 nextCursor；改变筛选条件后不可复用",
             "minLength": 1,
@@ -1210,9 +1219,24 @@
             "minLength": 1,
             "type": "string"
           },
+          "pinCompletenessStatus": {
+            "description": "可选逻辑器件引脚完整性状态",
+            "enum": [
+              "COMPLETE",
+              "PARTIAL",
+              "UNKNOWN"
+            ],
+            "type": "string"
+          },
           "projectHandle": {
             "description": "可选工程句柄；省略时查询当前活动工程。句柄来自 open/list/get_active_schematic_project",
             "maxLength": 96,
+            "minLength": 1,
+            "type": "string"
+          },
+          "variantId": {
+            "description": "可选当前工程 Variant ID；替代料未应用时装配状态返回 UNKNOWN",
+            "maxLength": 128,
             "minLength": 1,
             "type": "string"
           }
@@ -1997,7 +2021,7 @@
         "openWorldHint": false,
         "readOnlyHint": true
       },
-      "description": "通过组件 ID 或精确位号获取基础组件，也可指定 instanceContextId 获取层级实例中已应用 INSTANCE_ATTR 后的有效组件。重复位号不会被静默选择；属性来源、链接真实性与在线目录匹配状态会单独标注。",
+      "description": "通过组件 ID 或精确位号获取基础组件，也可指定 instanceContextId 获取层级实例中已应用 INSTANCE_ATTR 后的有效组件。返回显式 DNP/装配证据与多 PART 引脚完整性；替代 Variant 不在 v0.2 中猜测应用。",
       "inputSchema": {
         "$schema": "http://json-schema.org/draft-07/schema#",
         "properties": {
@@ -2030,6 +2054,12 @@
             "maxLength": 96,
             "minLength": 1,
             "type": "string"
+          },
+          "variantId": {
+            "description": "可选当前工程 Variant ID；v0.2 不应用替代料，指定后装配状态保守返回 UNKNOWN",
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
           }
         },
         "type": "object"
@@ -2058,7 +2088,7 @@
         "openWorldHint": false,
         "readOnlyHint": true
       },
-      "description": "分页返回组件引脚实例、变换后的连接点及显式网络几何候选；指定 instanceContextId 时同时返回已精确绑定的引脚实例覆盖。候选尚未通过官方网表验证。",
+      "description": "分页返回逻辑器件已实例化 PART 的合并引脚、隐藏标志、变换连接点及显式网络几何候选；多单元缺失或归属歧义会显式返回 PARTIAL/UNKNOWN，不据此判定未使用引脚。",
       "inputSchema": {
         "$schema": "http://json-schema.org/draft-07/schema#",
         "properties": {
@@ -2100,6 +2130,12 @@
           "projectHandle": {
             "description": "可选工程句柄；省略时查询当前活动工程。句柄来自 open/list/get_active_schematic_project",
             "maxLength": 96,
+            "minLength": 1,
+            "type": "string"
+          },
+          "variantId": {
+            "description": "可选当前工程 Variant ID；v0.2 不应用替代料，指定后装配状态保守返回 UNKNOWN",
+            "maxLength": 128,
             "minLength": 1,
             "type": "string"
           }

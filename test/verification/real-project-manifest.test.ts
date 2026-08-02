@@ -44,7 +44,18 @@ function sample(sampleId: string): Readonly<Record<string, unknown>> {
       dnpValue: "no",
       attributeCount: 4,
       explicitDnpCount: 3,
-      requiredDnpDesignators: ["C1", "C2"]
+      requiredDnpDesignators: ["C1", "C2"],
+      components: 5,
+      componentsPopulated: 1,
+      componentsDnp: 3,
+      componentsAssemblyUnknown: 1,
+      logicalComponents: 4,
+      logicalComponentsComplete: 3,
+      logicalComponentsPartial: 0,
+      logicalComponentsUnknown: 1,
+      completeMultiUnitLogicalComponents: 1,
+      symbolPins: 12,
+      symbolPinsHidden: 1
     },
     busBaseline: {
       buses: 2,
@@ -64,16 +75,17 @@ function sample(sampleId: string): Readonly<Record<string, unknown>> {
 
 function manifest(): Readonly<Record<string, unknown>> {
   return {
-    schemaVersion: "1.1.0",
-    baselineId: "v0.2-m2",
+    schemaVersion: "1.2.0",
+    baselineId: "v0.2-m3",
     packageAcceptanceSampleId: "real-02",
+    packageAssemblyAcceptanceSampleId: "real-01",
     samples: [sample("real-02"), sample("real-01")]
   };
 }
 
 test("真实工程私有清单严格解析、排序并保留里程碑基线", () => {
   const parsed = parseRealProjectManifest(manifest());
-  assert.equal(parsed.baselineId, "v0.2-m2");
+  assert.equal(parsed.baselineId, "v0.2-m3");
   assert.deepEqual(
     parsed.samples.map((item) => item.sampleId),
     ["real-01", "real-02"]

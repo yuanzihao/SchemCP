@@ -4,7 +4,7 @@ const SHA256_PATTERN = /^[a-f0-9]{64}$/;
 const SAMPLE_ID_PATTERN = /^real-[0-9]{2}$/;
 const BASELINE_ID_PATTERN = /^v[0-9]+\.[0-9]+-m[0-9]+(?:-[a-z0-9-]+)?$/;
 
-export const REAL_PROJECT_MANIFEST_SCHEMA_VERSION = "1.1.0" as const;
+export const REAL_PROJECT_MANIFEST_SCHEMA_VERSION = "1.2.0" as const;
 export const REAL_PROJECT_MANIFEST_LIMITS = {
   maxSamples: 32,
   maxPathLength: 4_096,
@@ -44,6 +44,17 @@ export interface RealProjectAssemblyBaseline {
   readonly attributeCount: number;
   readonly explicitDnpCount: number;
   readonly requiredDnpDesignators: readonly string[];
+  readonly components: number;
+  readonly componentsPopulated: number;
+  readonly componentsDnp: number;
+  readonly componentsAssemblyUnknown: number;
+  readonly logicalComponents: number;
+  readonly logicalComponentsComplete: number;
+  readonly logicalComponentsPartial: number;
+  readonly logicalComponentsUnknown: number;
+  readonly completeMultiUnitLogicalComponents: number;
+  readonly symbolPins: number;
+  readonly symbolPinsHidden: number;
 }
 
 export interface RealProjectBusBaseline {
@@ -80,6 +91,7 @@ export interface RealProjectManifest {
   readonly schemaVersion: typeof REAL_PROJECT_MANIFEST_SCHEMA_VERSION;
   readonly baselineId: string;
   readonly packageAcceptanceSampleId: string;
+  readonly packageAssemblyAcceptanceSampleId: string;
   readonly samples: readonly RealProjectSampleManifest[];
 }
 
@@ -273,7 +285,18 @@ function assembly(
       "dnpValue",
       "attributeCount",
       "explicitDnpCount",
-      "requiredDnpDesignators"
+      "requiredDnpDesignators",
+      "components",
+      "componentsPopulated",
+      "componentsDnp",
+      "componentsAssemblyUnknown",
+      "logicalComponents",
+      "logicalComponentsComplete",
+      "logicalComponentsPartial",
+      "logicalComponentsUnknown",
+      "completeMultiUnitLogicalComponents",
+      "symbolPins",
+      "symbolPinsHidden"
     ],
     [],
     field
@@ -307,12 +330,70 @@ function assembly(
   ) {
     invalid(`${field} 的 DNP 计数不守恒`);
   }
+  const components = count(record.components, `${field}.components`);
+  const componentsPopulated = count(
+    record.componentsPopulated,
+    `${field}.componentsPopulated`
+  );
+  const componentsDnp = count(record.componentsDnp, `${field}.componentsDnp`);
+  const componentsAssemblyUnknown = count(
+    record.componentsAssemblyUnknown,
+    `${field}.componentsAssemblyUnknown`
+  );
+  const logicalComponents = count(
+    record.logicalComponents,
+    `${field}.logicalComponents`
+  );
+  const logicalComponentsComplete = count(
+    record.logicalComponentsComplete,
+    `${field}.logicalComponentsComplete`
+  );
+  const logicalComponentsPartial = count(
+    record.logicalComponentsPartial,
+    `${field}.logicalComponentsPartial`
+  );
+  const logicalComponentsUnknown = count(
+    record.logicalComponentsUnknown,
+    `${field}.logicalComponentsUnknown`
+  );
+  const completeMultiUnitLogicalComponents = count(
+    record.completeMultiUnitLogicalComponents,
+    `${field}.completeMultiUnitLogicalComponents`
+  );
+  const symbolPins = count(record.symbolPins, `${field}.symbolPins`);
+  const symbolPinsHidden = count(
+    record.symbolPinsHidden,
+    `${field}.symbolPinsHidden`
+  );
+  if (
+    componentsPopulated + componentsDnp + componentsAssemblyUnknown !==
+      components ||
+    logicalComponentsComplete +
+        logicalComponentsPartial +
+        logicalComponentsUnknown !==
+      logicalComponents ||
+    completeMultiUnitLogicalComponents > logicalComponentsComplete ||
+    symbolPinsHidden > symbolPins
+  ) {
+    invalid(`${field} 的装配或引脚完整性分类计数不守恒`);
+  }
   return {
     attributeKey: "Add into BOM",
     dnpValue: "no",
     attributeCount,
     explicitDnpCount,
-    requiredDnpDesignators
+    requiredDnpDesignators,
+    components,
+    componentsPopulated,
+    componentsDnp,
+    componentsAssemblyUnknown,
+    logicalComponents,
+    logicalComponentsComplete,
+    logicalComponentsPartial,
+    logicalComponentsUnknown,
+    completeMultiUnitLogicalComponents,
+    symbolPins,
+    symbolPinsHidden
   };
 }
 
@@ -427,7 +508,13 @@ export function parseRealProjectManifest(value: unknown): RealProjectManifest {
   const root = object(value, "manifest");
   exactKeys(
     root,
-    ["schemaVersion", "baselineId", "packageAcceptanceSampleId", "samples"],
+    [
+      "schemaVersion",
+      "baselineId",
+      "packageAcceptanceSampleId",
+      "packageAssemblyAcceptanceSampleId",
+      "samples"
+    ],
     [],
     "manifest"
   );
@@ -471,10 +558,24 @@ export function parseRealProjectManifest(value: unknown): RealProjectManifest {
   ) {
     invalid("packageAcceptanceSampleId 必须引用含已解析层级实例和显式 BUS 的样本");
   }
+  const packageAssemblyAcceptanceSampleId = string(
+    root.packageAssemblyAcceptanceSampleId,
+    "packageAssemblyAcceptanceSampleId"
+  );
+  const assemblyAcceptance = samples.find(
+    (item) => item.sampleId === packageAssemblyAcceptanceSampleId
+  );
+  if (
+    assemblyAcceptance?.assemblyBaseline === undefined ||
+    assemblyAcceptance.assemblyBaseline.explicitDnpCount === 0
+  ) {
+    invalid("packageAssemblyAcceptanceSampleId 必须引用含显式 DNP 的样本");
+  }
   return {
     schemaVersion: REAL_PROJECT_MANIFEST_SCHEMA_VERSION,
     baselineId,
     packageAcceptanceSampleId,
+    packageAssemblyAcceptanceSampleId,
     samples
   };
 }

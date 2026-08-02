@@ -93,7 +93,13 @@ const COMPONENT_INSTANCE_SELECTOR = {
     .min(1)
     .max(QUERY_LIMITS.maxTextLength)
     .optional()
-    .describe("可选精确 INSTANCE 上下文 ID；指定后返回该层级实例中的有效组件属性")
+    .describe("可选精确 INSTANCE 上下文 ID；指定后返回该层级实例中的有效组件属性"),
+  variantId: z
+    .string()
+    .min(1)
+    .max(QUERY_LIMITS.maxTextLength)
+    .optional()
+    .describe("可选当前工程 Variant ID；v0.2 不应用替代料，指定后装配状态保守返回 UNKNOWN")
 } as const;
 
 const VARIANT_SELECTOR = {
@@ -776,9 +782,17 @@ export function createEdaMcpServer(
           variantsAndComponentGroups: "AVAILABLE_EXPLICIT_METADATA",
           instancePathSyntax: "AVAILABLE_EXPLICIT_DOCUMENT_UUID",
           instanceSheetResolution: "NOT_VERIFIED",
-          instanceAttributeOverrides: "AVAILABLE_NOT_APPLIED",
+          instanceAttributeOverrides:
+            "AVAILABLE_APPLIED_TO_EXACT_COMPONENT_AND_PIN_TARGETS",
+          effectiveAssemblyState:
+            "AVAILABLE_EXPLICIT_ADD_INTO_BOM_YES_NO_OTHERWISE_UNKNOWN",
+          multiUnitPinCompleteness:
+            "AVAILABLE_DETERMINISTIC_SYMBOL_PART_AGGREGATION",
+          hiddenSymbolPins:
+            "AVAILABLE_ONLY_WHEN_EXPLICIT_PIN_DISPLAY_IS_FALSE",
           variantInstanceContextMatching: "AVAILABLE_EXACT_ID_ONLY",
-          variantOverrideApplication: "NOT_AVAILABLE_TARGET_RESOLUTION_UNVERIFIED",
+          variantOverrideApplication:
+            "NOT_AVAILABLE_SELECTED_VARIANT_RETURNS_UNKNOWN_ASSEMBLY",
           pinConnectionCandidates: "AVAILABLE_NOT_VERIFIED",
           pinNoConnectDeclarations: "AVAILABLE_NOT_VERIFIED",
           networkEndpointCandidates: "AVAILABLE_NOT_VERIFIED",
@@ -1091,7 +1105,7 @@ export function createEdaMcpServer(
     {
       title: "分页列出组件",
       description:
-        "按确定顺序分页列出组件，可按页面、位号子串和层级实例上下文筛选。指定 instanceContextId 后返回该实例中的有效位号和属性来源；完整参数和链接使用 get_component。",
+        "按确定顺序分页列出组件，可按页面、位号、层级实例、装配状态和引脚完整性筛选。Add into BOM=yes/no 分别形成 POPULATED/DNP；缺失、冲突、非法或未应用 Variant 返回 UNKNOWN。",
       inputSchema: {
         pageId: z
           .string()
@@ -1111,6 +1125,20 @@ export function createEdaMcpServer(
           .max(QUERY_LIMITS.maxTextLength)
           .optional()
           .describe("可选精确 INSTANCE 上下文 ID"),
+        variantId: z
+          .string()
+          .min(1)
+          .max(QUERY_LIMITS.maxTextLength)
+          .optional()
+          .describe("可选当前工程 Variant ID；替代料未应用时装配状态返回 UNKNOWN"),
+        assemblyStatus: z
+          .enum(["POPULATED", "DNP", "UNKNOWN"])
+          .optional()
+          .describe("可选有效装配状态"),
+        pinCompletenessStatus: z
+          .enum(["COMPLETE", "PARTIAL", "UNKNOWN"])
+          .optional()
+          .describe("可选逻辑器件引脚完整性状态"),
         ...PAGE_INPUT
       },
       annotations: READ_ONLY_ANNOTATIONS
@@ -1531,7 +1559,7 @@ export function createEdaMcpServer(
     {
       title: "获取单个组件",
       description:
-        "通过组件 ID 或精确位号获取基础组件，也可指定 instanceContextId 获取层级实例中已应用 INSTANCE_ATTR 后的有效组件。重复位号不会被静默选择；属性来源、链接真实性与在线目录匹配状态会单独标注。",
+        "通过组件 ID 或精确位号获取基础组件，也可指定 instanceContextId 获取层级实例中已应用 INSTANCE_ATTR 后的有效组件。返回显式 DNP/装配证据与多 PART 引脚完整性；替代 Variant 不在 v0.2 中猜测应用。",
       inputSchema: COMPONENT_INSTANCE_SELECTOR,
       annotations: READ_ONLY_ANNOTATIONS
     },
@@ -1546,7 +1574,7 @@ export function createEdaMcpServer(
     {
       title: "获取组件符号引脚",
       description:
-        "分页返回组件引脚实例、变换后的连接点及显式网络几何候选；指定 instanceContextId 时同时返回已精确绑定的引脚实例覆盖。候选尚未通过官方网表验证。",
+        "分页返回逻辑器件已实例化 PART 的合并引脚、隐藏标志、变换连接点及显式网络几何候选；多单元缺失或归属歧义会显式返回 PARTIAL/UNKNOWN，不据此判定未使用引脚。",
       inputSchema: {
         ...COMPONENT_INSTANCE_SELECTOR,
         ...PAGE_INPUT

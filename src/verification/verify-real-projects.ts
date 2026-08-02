@@ -59,8 +59,19 @@ interface SampleReceipt {
   readonly hierarchy: HierarchySummary;
   readonly assembly: {
     readonly addIntoBomAttributes: number;
-    readonly explicitDnp: number;
+    readonly explicitDnpAttributes: number;
     readonly requiredDnpVerified: number;
+    readonly components: number;
+    readonly componentsPopulated: number;
+    readonly componentsDnp: number;
+    readonly componentsAssemblyUnknown: number;
+    readonly logicalComponents: number;
+    readonly logicalComponentsComplete: number;
+    readonly logicalComponentsPartial: number;
+    readonly logicalComponentsUnknown: number;
+    readonly completeMultiUnitLogicalComponents: number;
+    readonly symbolPins: number;
+    readonly symbolPinsHidden: number;
   };
   readonly bus: RealProjectBusBaseline;
   readonly comparison: {
@@ -129,37 +140,85 @@ function assemblyEvidence(
   baseline: RealProjectAssemblyBaseline | undefined,
   sampleId: string
 ): SampleReceipt["assembly"] {
-  if (baseline === undefined) {
-    return {
-      addIntoBomAttributes: 0,
-      explicitDnp: 0,
-      requiredDnpVerified: 0
-    };
-  }
   const attributes = ir.components.flatMap((component) =>
     component.attributes
-      .filter((attribute) => attribute.key === baseline.attributeKey)
+      .filter((attribute) => attribute.key === "Add into BOM")
       .map((attribute) => ({ component, attribute }))
   );
-  const dnp = attributes.filter(
+  const explicitDnpAttributes = attributes.filter(
     ({ attribute }) =>
       typeof attribute.value === "string" &&
-      attribute.value.toLocaleLowerCase("en-US") === baseline.dnpValue
+      attribute.value.toLocaleLowerCase("en-US") === "no"
   );
+  const dnpComponents = ir.components.filter(
+    (component) => component.assembly.status === "DNP"
+  );
+  const logicalComponents = [
+    ...new Map(
+      ir.components.map((component) => [
+        component.pinCompleteness.logicalComponentId,
+        component.pinCompleteness
+      ])
+    ).values()
+  ];
+  const actual = {
+    addIntoBomAttributes: attributes.length,
+    explicitDnpAttributes: explicitDnpAttributes.length,
+    requiredDnpVerified: 0,
+    components: ir.components.length,
+    componentsPopulated: ir.components.filter(
+      (component) => component.assembly.status === "POPULATED"
+    ).length,
+    componentsDnp: dnpComponents.length,
+    componentsAssemblyUnknown: ir.components.filter(
+      (component) => component.assembly.status === "UNKNOWN"
+    ).length,
+    logicalComponents: logicalComponents.length,
+    logicalComponentsComplete: logicalComponents.filter(
+      (item) => item.status === "COMPLETE"
+    ).length,
+    logicalComponentsPartial: logicalComponents.filter(
+      (item) => item.status === "PARTIAL"
+    ).length,
+    logicalComponentsUnknown: logicalComponents.filter(
+      (item) => item.status === "UNKNOWN"
+    ).length,
+    completeMultiUnitLogicalComponents: logicalComponents.filter(
+      (item) => item.status === "COMPLETE" && item.units.length > 1
+    ).length,
+    symbolPins: ir.symbolPins.length,
+    symbolPinsHidden: ir.symbolPins.filter((pin) => pin.display === false).length
+  };
+  if (baseline === undefined) return actual;
   equalCount(
-    attributes.length,
+    actual.addIntoBomAttributes,
     baseline.attributeCount,
     `${sampleId}.assembly.attributeCount`
   );
   equalCount(
-    dnp.length,
+    actual.explicitDnpAttributes,
     baseline.explicitDnpCount,
     `${sampleId}.assembly.explicitDnpCount`
   );
+  for (const key of [
+    "components",
+    "componentsPopulated",
+    "componentsDnp",
+    "componentsAssemblyUnknown",
+    "logicalComponents",
+    "logicalComponentsComplete",
+    "logicalComponentsPartial",
+    "logicalComponentsUnknown",
+    "completeMultiUnitLogicalComponents",
+    "symbolPins",
+    "symbolPinsHidden"
+  ] as const) {
+    equalCount(actual[key], baseline[key], `${sampleId}.assembly.${key}`);
+  }
   let requiredDnpVerified = 0;
   for (const designator of baseline.requiredDnpDesignators) {
-    const matches = dnp.filter(
-      ({ component }) => component.designator === designator
+    const matches = dnpComponents.filter(
+      (component) => component.designator === designator
     );
     equalCount(
       matches.length,
@@ -169,8 +228,7 @@ function assemblyEvidence(
     requiredDnpVerified += 1;
   }
   return {
-    addIntoBomAttributes: attributes.length,
-    explicitDnp: dnp.length,
+    ...actual,
     requiredDnpVerified
   };
 }
@@ -405,6 +463,9 @@ function parsePackageReceipt(stdout: string): {
   readonly packageBytes: number;
   readonly realHierarchyQuery: string;
   readonly realBusQuery: string;
+  readonly realMultiUnitPinQuery: string;
+  readonly realSeparatedPowerUnitQuery: string;
+  readonly realAssemblyQuery: string;
 } {
   const lines = stdout.trim().split(/\r?\n/u);
   const last = lines[lines.length - 1];
@@ -424,7 +485,10 @@ function parsePackageReceipt(stdout: string): {
     !SHA256_PATTERN.test(record.tarballSha256) ||
     !Number.isSafeInteger(record.packageBytes) ||
     record.realHierarchyQuery !== "VERIFIED" ||
-    record.realBusQuery !== "VERIFIED"
+    record.realBusQuery !== "VERIFIED" ||
+    record.realMultiUnitPinQuery !== "VERIFIED" ||
+    record.realSeparatedPowerUnitQuery !== "VERIFIED" ||
+    record.realAssemblyQuery !== "VERIFIED"
   ) {
     fail("REAL_PROJECT_PACKAGE_GATE_FAILED", "候选包真实层级调用未通过");
   }
@@ -432,19 +496,27 @@ function parsePackageReceipt(stdout: string): {
     tarballSha256: record.tarballSha256,
     packageBytes: record.packageBytes as number,
     realHierarchyQuery: record.realHierarchyQuery,
-    realBusQuery: record.realBusQuery
+    realBusQuery: record.realBusQuery,
+    realMultiUnitPinQuery: record.realMultiUnitPinQuery,
+    realSeparatedPowerUnitQuery: record.realSeparatedPowerUnitQuery,
+    realAssemblyQuery: record.realAssemblyQuery
   };
 }
 
 async function verifyInstalledPackage(
   root: string,
   projectPath: string,
+  assemblyProjectPath: string,
   npmCache: string
 ): Promise<ReturnType<typeof parsePackageReceipt>> {
   try {
     const result = await execFile(
       process.execPath,
-      ["dist/src/verification/verify-package.js", projectPath],
+      [
+        "dist/src/verification/verify-package.js",
+        projectPath,
+        assemblyProjectPath
+      ],
       {
         cwd: root,
         env: {
@@ -531,6 +603,13 @@ async function main(): Promise<void> {
   if (acceptance === undefined) {
     fail("REAL_PROJECT_MANIFEST_INVALID", "候选包验收样本缺失");
   }
+  const assemblyAcceptance = manifest.samples.find(
+    (sample) =>
+      sample.sampleId === manifest.packageAssemblyAcceptanceSampleId
+  );
+  if (assemblyAcceptance === undefined) {
+    fail("REAL_PROJECT_MANIFEST_INVALID", "候选包 DNP 验收样本缺失");
+  }
   const temporaryRoot = await mkdtemp(
     path.join(tmpdir(), "schemcp-real-projects-")
   );
@@ -539,6 +618,7 @@ async function main(): Promise<void> {
     packageReceipt = await verifyInstalledPackage(
       root,
       acceptance.projectPath,
+      assemblyAcceptance.projectPath,
       path.join(temporaryRoot, "npm-cache")
     );
   } finally {
@@ -558,7 +638,7 @@ async function main(): Promise<void> {
       `${path.basename(manifestPath, ".json")}.receipt.json`
     );
   const receiptSha256 = await writeReceipt(receiptPath, {
-    schemaVersion: "1.1.0",
+    schemaVersion: "1.2.0",
     gate: "REAL_PROJECTS_VERIFIED",
     baselineId: manifest.baselineId,
     sourceSnapshotSha256,
@@ -582,7 +662,7 @@ async function main(): Promise<void> {
         0
       ),
       explicitDnpEvidence: sampleReceipts.reduce(
-        (total, item) => total + item.assembly.explicitDnp,
+        (total, item) => total + item.assembly.explicitDnpAttributes,
         0
       ),
       explicitBuses: sampleReceipts.reduce(

@@ -7,7 +7,7 @@
 - 包：`@yuanzihao/schemcp@0.1.0`
 - 运输：`stdio`
 - 工具数：`49`
-- JSON 快照 SHA-256：`d5b6a5c0b71f657f1335fc0f9345d3d3e0b8b9322d39e91eeeea581d0c6de4ad`
+- JSON 快照 SHA-256：`89f9c8615e2c67e04e07aa538c912d8ae21f6279fa142acd3c19717c0a2997a1`
 
 每个工具的结果至少包含 `ok:boolean` 与平台安全能力状态；工具专用字段作为受版本化公共契约约束的扩展属性返回。失败时 `ok=false`，并返回稳定的 `error.code`。
 
@@ -1292,7 +1292,7 @@
 
 **分页列出组件**
 
-按确定顺序分页列出组件，可按页面、位号子串和层级实例上下文筛选。指定 instanceContextId 后返回该实例中的有效位号和属性来源；完整参数和链接使用 get_component。
+按确定顺序分页列出组件，可按页面、位号、层级实例、装配状态和引脚完整性筛选。Add into BOM=yes/no 分别形成 POPULATED/DNP；缺失、冲突、非法或未应用 Variant 返回 UNKNOWN。
 
 输入 Schema：
 
@@ -1300,6 +1300,15 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "properties": {
+    "assemblyStatus": {
+      "description": "可选有效装配状态",
+      "enum": [
+        "POPULATED",
+        "DNP",
+        "UNKNOWN"
+      ],
+      "type": "string"
+    },
     "cursor": {
       "description": "上一页返回的不透明 nextCursor；改变筛选条件后不可复用",
       "minLength": 1,
@@ -1329,9 +1338,24 @@
       "minLength": 1,
       "type": "string"
     },
+    "pinCompletenessStatus": {
+      "description": "可选逻辑器件引脚完整性状态",
+      "enum": [
+        "COMPLETE",
+        "PARTIAL",
+        "UNKNOWN"
+      ],
+      "type": "string"
+    },
     "projectHandle": {
       "description": "可选工程句柄；省略时查询当前活动工程。句柄来自 open/list/get_active_schematic_project",
       "maxLength": 96,
+      "minLength": 1,
+      "type": "string"
+    },
+    "variantId": {
+      "description": "可选当前工程 Variant ID；替代料未应用时装配状态返回 UNKNOWN",
+      "maxLength": 128,
       "minLength": 1,
       "type": "string"
     }
@@ -2167,7 +2191,7 @@
 
 **获取单个组件**
 
-通过组件 ID 或精确位号获取基础组件，也可指定 instanceContextId 获取层级实例中已应用 INSTANCE_ATTR 后的有效组件。重复位号不会被静默选择；属性来源、链接真实性与在线目录匹配状态会单独标注。
+通过组件 ID 或精确位号获取基础组件，也可指定 instanceContextId 获取层级实例中已应用 INSTANCE_ATTR 后的有效组件。返回显式 DNP/装配证据与多 PART 引脚完整性；替代 Variant 不在 v0.2 中猜测应用。
 
 输入 Schema：
 
@@ -2204,6 +2228,12 @@
       "maxLength": 96,
       "minLength": 1,
       "type": "string"
+    },
+    "variantId": {
+      "description": "可选当前工程 Variant ID；v0.2 不应用替代料，指定后装配状态保守返回 UNKNOWN",
+      "maxLength": 128,
+      "minLength": 1,
+      "type": "string"
     }
   },
   "type": "object"
@@ -2233,7 +2263,7 @@
 
 **获取组件符号引脚**
 
-分页返回组件引脚实例、变换后的连接点及显式网络几何候选；指定 instanceContextId 时同时返回已精确绑定的引脚实例覆盖。候选尚未通过官方网表验证。
+分页返回逻辑器件已实例化 PART 的合并引脚、隐藏标志、变换连接点及显式网络几何候选；多单元缺失或归属歧义会显式返回 PARTIAL/UNKNOWN，不据此判定未使用引脚。
 
 输入 Schema：
 
@@ -2279,6 +2309,12 @@
     "projectHandle": {
       "description": "可选工程句柄；省略时查询当前活动工程。句柄来自 open/list/get_active_schematic_project",
       "maxLength": 96,
+      "minLength": 1,
+      "type": "string"
+    },
+    "variantId": {
+      "description": "可选当前工程 Variant ID；v0.2 不应用替代料，指定后装配状态保守返回 UNKNOWN",
+      "maxLength": 128,
       "minLength": 1,
       "type": "string"
     }

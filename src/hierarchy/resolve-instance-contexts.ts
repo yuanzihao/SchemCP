@@ -1,10 +1,13 @@
-import { canonicalJson, sha256CanonicalJson } from "../core/canonical-json.js";
+import { sha256CanonicalJson } from "../core/canonical-json.js";
+import {
+  effectiveComponentAttributes,
+  resolveComponentAssembly
+} from "../variant/effective-component-state.js";
 import type {
   IrComponent,
   IrComponentOccurrence,
   IrDevice,
   IrDocumentHeaderProvenance,
-  IrEffectiveAttribute,
   IrInstanceAttributeOverride,
   IrInstanceBlockPathSegment,
   IrInstanceContext,
@@ -13,8 +16,7 @@ import type {
   IrSchematic,
   IrSchematicPage,
   IrSymbol,
-  JsonObject,
-  JsonValue
+  JsonObject
 } from "../ir/model.js";
 import type {
   InstanceBlockPathSegment,
@@ -138,58 +140,6 @@ function segmentPageStatus(
   if (resolution.status === "NOT_FOUND") return "SOURCE_PAGE_NOT_FOUND";
   if (resolution.status === "AMBIGUOUS") return "SOURCE_PAGE_AMBIGUOUS";
   return "SOURCE_PAGE_SCHEMATIC_MISMATCH";
-}
-
-function uniqueValues(values: readonly JsonValue[]): readonly JsonValue[] {
-  return [
-    ...new Map(values.map((value) => [canonicalJson(value), value])).values()
-  ];
-}
-
-function effectiveAttributes(
-  component: IrComponent,
-  device: IrDevice | undefined,
-  overrides: readonly IrInstanceAttributeOverride[]
-): readonly IrEffectiveAttribute[] {
-  const result = new Map<string, IrEffectiveAttribute>();
-  if (device !== undefined) {
-    for (const [key, value] of Object.entries(device.attributes)) {
-      result.set(key, {
-        key,
-        values: [value],
-        resolution: "DEVICE_DEFAULT",
-        provenance: [device.provenance]
-      });
-    }
-  }
-  const componentAttributes = new Map<string, typeof component.attributes>();
-  for (const attribute of component.attributes) {
-    const existing = componentAttributes.get(attribute.key) ?? [];
-    componentAttributes.set(attribute.key, [...existing, attribute]);
-  }
-  for (const [key, attributes] of componentAttributes) {
-    const values = uniqueValues(attributes.map((attribute) => attribute.value));
-    result.set(key, {
-      key,
-      values,
-      resolution:
-        values.length === 1 ? "COMPONENT_EXPLICIT" : "COMPONENT_CONFLICT",
-      provenance: attributes.map((attribute) => attribute.provenance)
-    });
-  }
-  for (const override of overrides) {
-    for (const [key, value] of Object.entries(override.attributes)) {
-      result.set(key, {
-        key,
-        values: [value],
-        resolution: "INSTANCE_OVERRIDE",
-        provenance: [override.provenance]
-      });
-    }
-  }
-  return [...result.values()].sort((left, right) =>
-    compareText(left.key, right.key)
-  );
 }
 
 function resolveContext(
@@ -443,13 +393,27 @@ function buildOccurrences(
           provenance: override.provenance
         }))
         .sort((left, right) => compareText(left.symbolPinId, right.symbolPinId));
-      const attributes = effectiveAttributes(
+      const attributes = effectiveComponentAttributes(
         component,
         component.deviceId === undefined
           ? undefined
           : devicesById.get(component.deviceId),
         componentOverrides
       );
+      const assembly = resolveComponentAssembly(attributes);
+      const pinCompleteness = {
+        ...component.pinCompleteness,
+        logicalComponentId: sha256CanonicalJson([
+          context.id,
+          component.pinCompleteness.logicalComponentId
+        ]),
+        ...(component.pinCompleteness.units.length > 1
+          ? {
+              status: "UNKNOWN" as const,
+              reason: "INSTANCE_UNIT_CONTEXT_INCOMPLETE" as const
+            }
+          : {})
+      };
       const effectiveDesignator = attributes.find(
         (attribute) =>
           attribute.key === "Designator" &&
@@ -474,7 +438,9 @@ function buildOccurrences(
             : { designator: component.designator }),
         attributes,
         pinOverrides,
-        populationStatus: "BASE_DESIGN",
+        assembly,
+        pinCompleteness,
+        populationStatus: assembly.status,
         pathTruth: "EXPLICIT_INSTANCE_DOCUMENT_RESOLVED",
         electricalTruth: "NOT_VERIFIED"
       });

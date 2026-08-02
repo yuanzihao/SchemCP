@@ -11,6 +11,10 @@
 - `list_design_hierarchy`、`list_components`、`get_component` 和 `get_component_pins` 支持层级实例上下文查询；
 - 新增仓库外私有清单驱动的 `verify:real-projects`，冻结真实工程输入、网表差异、诊断和安装态 MCP 调用门禁。
 - 新增 `IrBus`、`IrBusEntry` 和 `list_buses`，兼容官方独立 `BUSENTRY` 与当前导出的内嵌 `busEntry`，保留显式顺序、坐标、来源和未绑定状态。
+- 新增有效装配状态模型，按 Device、组件、层级实例覆盖顺序解析 `Add into BOM=yes/no`，并在组件查询中公开 `POPULATED/DNP/UNKNOWN`、证据和稳定原因。
+- 新增多单元逻辑器件引脚完整性模型，按 Symbol `PART` 聚合分离单元和电源单元，保留显式隐藏引脚，并以 `COMPLETE/PARTIAL/UNKNOWN` 阻止不完整数据被误判为未使用引脚。
+- `list_components`、`get_component` 和 `get_component_pins` 新增 Variant、装配状态和引脚完整性作用域；选择尚未应用的 Variant 时装配状态保守返回 `UNKNOWN`。
+- 真实工程安装态门禁增加 DNP 与完整多单元引脚聚合调用，私有清单契约升级为 1.2.0。
 
 ### Changed
 
@@ -18,7 +22,7 @@
 
 ### Planned
 
-- 完善 `Add into BOM=no` 的 DNP、引脚完整性和 P2 资源语义；
+- 完成组件角色、接口、电源树、外部时钟树、复位/启动路径和 MCU 引脚资源模型；
 - 在不提交私有工程的前提下继续扩大格式回归覆盖。
 
 ## [0.1.0] - 2026-07-31

@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { canonicalJson } from "../core/canonical-json.js";
+import { unresolvedVariantAssembly } from "../variant/effective-component-state.js";
 import type {
   EdaIr,
   IrAttribute,
@@ -109,6 +110,8 @@ export interface ComponentSummary {
   };
   readonly rotation: number;
   readonly mirrored: boolean;
+  readonly assembly: IrComponent["assembly"];
+  readonly pinCompleteness: IrComponent["pinCompleteness"];
   readonly deviceTitle?: string;
   readonly symbolTitle?: string;
   readonly identity?: {
@@ -124,6 +127,8 @@ export interface ComponentSummary {
     readonly instanceContextId: string;
     readonly schematicId: string;
     readonly sourcePageId: string;
+    readonly assembly: IrComponentOccurrence["assembly"];
+    readonly pinCompleteness: IrComponentOccurrence["pinCompleteness"];
     readonly populationStatus: IrComponentOccurrence["populationStatus"];
     readonly pathTruth: IrComponentOccurrence["pathTruth"];
     readonly electricalTruth: IrComponentOccurrence["electricalTruth"];
@@ -266,9 +271,12 @@ export interface SymbolTextSummary {
 
 export interface ComponentPinSummary {
   readonly id: string;
+  readonly componentId: string;
+  readonly pageId: string;
   readonly symbolPinId: string;
   readonly symbolId: string;
   readonly partId: string;
+  readonly display?: boolean;
   readonly endpointKind: IrPinEndpointKind;
   readonly symbolType?: number;
   readonly name?: string;
@@ -537,6 +545,11 @@ interface ComponentListOptions {
   readonly pageId?: string | undefined;
   readonly designatorContains?: string | undefined;
   readonly instanceContextId?: string | undefined;
+  readonly variantId?: string | undefined;
+  readonly assemblyStatus?: IrComponent["assembly"]["status"] | undefined;
+  readonly pinCompletenessStatus?:
+    | IrComponent["pinCompleteness"]["status"]
+    | undefined;
   readonly limit?: number | undefined;
   readonly cursor?: string | undefined;
 }
@@ -824,7 +837,8 @@ function summarizeComponent(
   component: IrComponent,
   ir: EdaIr,
   identities: ReadonlyMap<string, UnresolvedComponentSummary>,
-  occurrence?: IrComponentOccurrence
+  occurrence?: IrComponentOccurrence,
+  variantId?: string
 ): ComponentSummary {
   const identity = identities.get(`${component.pageId}\n${component.id}`);
   const device =
@@ -838,6 +852,12 @@ function summarizeComponent(
   const attributes =
     occurrence?.attributes ?? componentAttributes(component, device);
   const effectiveDesignator = occurrence?.designator ?? component.designator;
+  const assembly =
+    variantId === undefined
+      ? (occurrence?.assembly ?? component.assembly)
+      : unresolvedVariantAssembly(occurrence?.assembly ?? component.assembly);
+  const pinCompleteness =
+    occurrence?.pinCompleteness ?? component.pinCompleteness;
   return {
     id: component.id,
     pageId: component.pageId,
@@ -855,6 +875,8 @@ function summarizeComponent(
     position: component.position,
     rotation: component.rotation,
     mirrored: component.mirrored,
+    assembly,
+    pinCompleteness,
     ...(device?.title === undefined
       ? {}
       : { deviceTitle: device.title }),
@@ -890,7 +912,9 @@ function summarizeComponent(
             instanceContextId: occurrence.instanceContextId,
             schematicId: occurrence.schematicId,
             sourcePageId: occurrence.pageId,
-            populationStatus: occurrence.populationStatus,
+            assembly,
+            pinCompleteness,
+            populationStatus: assembly.status,
             pathTruth: occurrence.pathTruth,
             electricalTruth: occurrence.electricalTruth
           }
@@ -1023,9 +1047,12 @@ function summarizePin(
     }));
   return {
     id: pin.id,
+    componentId: pin.componentId,
+    pageId: pin.pageId,
     symbolPinId: pin.symbolPinId,
     symbolId: pin.symbolId,
     partId: pin.partId,
+    ...(pin.display === undefined ? {} : { display: pin.display }),
     endpointKind: pin.endpointKind,
     ...(pin.symbolType === undefined ? {} : { symbolType: pin.symbolType }),
     ...(pin.name === undefined ? {} : { name: pin.name }),
@@ -1557,6 +1584,8 @@ export class EdaIrQueryIndex {
       options.instanceContextId,
       "instanceContextId"
     );
+    const variantId = validateText(options.variantId, "variantId");
+    this.assertVariantExists(variantId);
     const designatorContains = validateText(
       options.designatorContains,
       "designatorContains"
@@ -1594,18 +1623,38 @@ export class EdaIrQueryIndex {
             ?.toLocaleLowerCase("en-US")
             .includes(needle) === true
       )
+      .filter(({ component, occurrence }) => {
+        const assembly =
+          variantId === undefined
+            ? (occurrence?.assembly ?? component.assembly)
+            : unresolvedVariantAssembly(
+                occurrence?.assembly ?? component.assembly
+              );
+        const completeness =
+          occurrence?.pinCompleteness ?? component.pinCompleteness;
+        return (
+          (options.assemblyStatus === undefined ||
+            assembly.status === options.assemblyStatus) &&
+          (options.pinCompletenessStatus === undefined ||
+            completeness.status === options.pinCompletenessStatus)
+        );
+      })
       .map(({ component, occurrence }) =>
         summarizeComponent(
           component,
           this.ir,
           this.componentIdentities,
-          occurrence
+          occurrence,
+          variantId
         )
       );
     const scope = scopeHash("components", {
       pageId: pageId ?? "",
       designatorContains: needle ?? "",
-      instanceContextId: instanceContextId ?? ""
+      instanceContextId: instanceContextId ?? "",
+      variantId: variantId ?? "",
+      assemblyStatus: options.assemblyStatus ?? "",
+      pinCompletenessStatus: options.pinCompletenessStatus ?? ""
     });
     return paginate(filtered, options.limit, options.cursor, scope);
   }
@@ -1969,6 +2018,7 @@ export class EdaIrQueryIndex {
     readonly designator?: string | undefined;
     readonly pageId?: string | undefined;
     readonly instanceContextId?: string | undefined;
+    readonly variantId?: string | undefined;
   }): ComponentLookup {
     const componentId = validateText(query.componentId, "componentId");
     const designator = validateText(query.designator, "designator");
@@ -1977,6 +2027,8 @@ export class EdaIrQueryIndex {
       query.instanceContextId,
       "instanceContextId"
     );
+    const variantId = validateText(query.variantId, "variantId");
+    this.assertVariantExists(variantId);
     if ((componentId === undefined) === (designator === undefined)) {
       throw new QueryError(
         "QUERY_INVALID_TEXT",
@@ -2030,7 +2082,8 @@ export class EdaIrQueryIndex {
               component,
               this.ir,
               this.componentIdentities,
-              occurrence
+              occurrence,
+              variantId
             )
           )
       };
@@ -2051,7 +2104,8 @@ export class EdaIrQueryIndex {
       selected,
       this.ir,
       this.componentIdentities,
-      occurrence
+      occurrence,
+      variantId
     );
     return {
       status: "FOUND",
@@ -2138,6 +2192,7 @@ export class EdaIrQueryIndex {
     readonly designator?: string | undefined;
     readonly pageId?: string | undefined;
     readonly instanceContextId?: string | undefined;
+    readonly variantId?: string | undefined;
     readonly limit?: number | undefined;
     readonly cursor?: string | undefined;
   }): ComponentLookup | {
@@ -2169,13 +2224,40 @@ export class EdaIrQueryIndex {
             (candidate) =>
               candidate.id === lookup.component.occurrence?.id
           );
-    const pins = (
-      this.pinsByComponent.get(`${component.pageId}\n${component.id}`) ?? []
-    ).map((pin) => summarizePin(pin, occurrence));
+    const completeness =
+      occurrence?.pinCompleteness ?? component.pinCompleteness;
+    const unitComponents =
+      occurrence !== undefined || completeness.status === "UNKNOWN"
+        ? [component]
+        : completeness.units.flatMap((unit) => {
+            const candidate = this.findComponent(unit.componentId, unit.pageId);
+            return candidate === undefined ? [] : [candidate];
+          });
+    const pins = unitComponents
+      .flatMap((unit) =>
+        (
+          this.pinsByComponent.get(`${unit.pageId}\n${unit.id}`) ?? []
+        ).map((pin) =>
+          summarizePin(
+            pin,
+            occurrence?.componentId === unit.id &&
+              occurrence.pageId === unit.pageId
+              ? occurrence
+              : undefined
+          )
+        )
+      )
+      .sort(
+        (left, right) =>
+          compareText(left.pageId, right.pageId) ||
+          compareText(left.partId, right.partId) ||
+          compareText(left.number ?? "", right.number ?? "") ||
+          compareText(left.id, right.id)
+      );
     const scope = scopeHash("component-pins", {
-      pageId: component.pageId,
-      componentId: component.id,
-      instanceContextId: lookup.component.occurrence?.instanceContextId ?? ""
+      logicalComponentId: completeness.logicalComponentId,
+      instanceContextId: lookup.component.occurrence?.instanceContextId ?? "",
+      variantId: query.variantId ?? ""
     });
     return {
       status: "FOUND",
@@ -2422,6 +2504,18 @@ export class EdaIrQueryIndex {
       status: "FOUND",
       variant: summarizeVariant(candidates[0] as IrVariant)
     };
+  }
+
+  private assertVariantExists(variantId: string | undefined): void {
+    if (
+      variantId !== undefined &&
+      !this.variants.some((variant) => variant.id === variantId)
+    ) {
+      throw new QueryError(
+        "QUERY_INVALID_TEXT",
+        "variantId 未引用当前工程中的 Variant。"
+      );
+    }
   }
 
   private groupsForVariant(variantId: string): readonly IrComponentGroup[] {

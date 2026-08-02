@@ -89,6 +89,10 @@ SchemCP 默认无工程启动。用户在对话中附加 `.epro2` 后，让模�
 5. `get_component` 与 `get_component_pins`
 6. `get_component_pin_connectivity`
 
+`list_components` 可以使用 `assemblyStatus` 筛选 `POPULATED`、`DNP` 或 `UNKNOWN`，并使用 `pinCompletenessStatus` 筛选 `COMPLETE`、`PARTIAL` 或 `UNKNOWN`。`DNP` 只来自有效 `Add into BOM=no`；缺失、冲突、非法值或指定了尚未应用的 Variant 时都不会被猜成 DNP。
+
+`get_component_pins` 在逻辑器件完整性可证明时合并同位号多 `PART` 单元，包括分离电源单元。`display=false` 的引脚仍会返回；若 `display` 来源缺失、多单元缺失或同位号存在歧义，完整性会降级，调用方不得据此断言某个 MCU 引脚“未使用”。
+
 ## 4. 何时提供 `.enet`
 
 普通器件阅读不要求 `.enet`。需要精确的引脚—网络端点或跨板连接查询时，在嘉立创 EDA 专业版中从“导出 → 网表文件”导出 `.enet`，再调用 `attach_schematic_netlist` 绑定到对应 `projectHandle`。

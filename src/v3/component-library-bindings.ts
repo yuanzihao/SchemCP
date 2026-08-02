@@ -13,6 +13,13 @@ export type ComponentBeforeLibraryBindings = Omit<
   | "footprintId"
   | "symbolBinding"
   | "footprintBinding"
+  | "assembly"
+  | "pinCompleteness"
+>;
+
+export type ComponentAfterLibraryBindings = Omit<
+  IrComponent,
+  "assembly" | "pinCompleteness"
 >;
 
 export interface ComponentLibraryBindingCompilationSummary {
@@ -29,7 +36,7 @@ export interface ComponentLibraryBindingCompilationSummary {
 }
 
 export interface ComponentLibraryBindingCompilationResult {
-  readonly components: readonly IrComponent[];
+  readonly components: readonly ComponentAfterLibraryBindings[];
   readonly summary: ComponentLibraryBindingCompilationSummary;
 }
 
@@ -186,7 +193,7 @@ export function compileComponentLibraryBindings(
     Symbol: emptyStateCounts(),
     Footprint: emptyStateCounts()
   };
-  const resolved = components.map((component): IrComponent => {
+  const resolved = components.map((component): ComponentAfterLibraryBindings => {
     const device =
       component.deviceId === undefined
         ? undefined

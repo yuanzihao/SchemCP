@@ -29,6 +29,8 @@ import { MCP_TOOL_NAMES } from "../mcp/contract.js";
 const execFile = promisify(execFileCallback);
 const MAX_PACKAGE_BYTES = 6 * 1024 * 1024;
 const MAX_UNPACKED_BYTES = 25 * 1024 * 1024;
+const SEPARATED_POWER_PIN_NAME_PATTERN =
+  /^(?:V(?:CC|DD|SS|BAT|DDA|SSA|REF|CAP|IN|OUT)|A?VCC|A?VDD|A?VSS|GND|AGND|DGND)(?:[_0-9A-Z+-]*)$/i;
 
 interface PackReceipt {
   readonly name: string;
@@ -417,9 +419,19 @@ async function assertInstalledPackagePrivacy(
 
 async function main(): Promise<void> {
   const projectArgument = process.argv[2];
+  const assemblyProjectArgument = process.argv[3];
   if (projectArgument !== undefined) {
     assert.equal(path.isAbsolute(projectArgument), true, "真实工程必须使用绝对路径");
     assert.equal(path.extname(projectArgument).toLowerCase(), ".epro2");
+  }
+  if (assemblyProjectArgument !== undefined) {
+    assert.equal(
+      path.isAbsolute(assemblyProjectArgument),
+      true,
+      "DNP 真实工程必须使用绝对路径"
+    );
+    assert.equal(path.extname(assemblyProjectArgument).toLowerCase(), ".epro2");
+    assert.ok(projectArgument !== undefined, "DNP 真实工程不能脱离主验收工程");
   }
 
   const root = process.cwd();
@@ -883,6 +895,154 @@ async function main(): Promise<void> {
             "FOUND"
           );
         }
+
+        const completeComponents: {
+          readonly id: string;
+          readonly pageId: string;
+          readonly pinCompleteness: {
+            readonly status: string;
+            readonly units: readonly unknown[];
+            readonly instantiatedPinCount: number;
+          };
+        }[] = [];
+        let completeCursor: string | undefined;
+        do {
+          const completeResult = structured(
+            await client.callTool({
+              name: "list_components",
+              arguments: {
+                pinCompletenessStatus: "COMPLETE",
+                limit: 50,
+                ...(completeCursor === undefined
+                  ? {}
+                  : { cursor: completeCursor })
+              }
+            })
+          );
+          const page = completeResult.page as {
+            readonly items: typeof completeComponents;
+            readonly nextCursor?: string;
+          };
+          completeComponents.push(...page.items);
+          completeCursor = page.nextCursor;
+        } while (completeCursor !== undefined);
+        const multiUnit = completeComponents.find(
+          (component) => component.pinCompleteness.units.length > 1
+        );
+        assert.ok(multiUnit, "真实工程必须包含完整的多单元逻辑器件");
+        const multiUnitPinItems: {
+          readonly partId: string;
+          readonly name?: string;
+        }[] = [];
+        let multiUnitPinCursor: string | undefined;
+        let multiUnitPinTotal = 0;
+        do {
+          const multiUnitPins = structured(
+            await client.callTool({
+              name: "get_component_pins",
+              arguments: {
+                componentId: multiUnit.id,
+                pageId: multiUnit.pageId,
+                limit: 50,
+                ...(multiUnitPinCursor === undefined
+                  ? {}
+                  : { cursor: multiUnitPinCursor })
+              }
+            })
+          );
+          const multiUnitLookup = multiUnitPins.lookup as {
+            readonly status: string;
+            readonly pins: {
+              readonly total: number;
+              readonly items: typeof multiUnitPinItems;
+              readonly nextCursor?: string;
+            };
+          };
+          assert.equal(multiUnitLookup.status, "FOUND");
+          multiUnitPinTotal = multiUnitLookup.pins.total;
+          multiUnitPinItems.push(...multiUnitLookup.pins.items);
+          multiUnitPinCursor = multiUnitLookup.pins.nextCursor;
+        } while (multiUnitPinCursor !== undefined);
+        assert.equal(
+          multiUnitPinTotal,
+          multiUnit.pinCompleteness.instantiatedPinCount
+        );
+        const pinsByPart = new Map<string, typeof multiUnitPinItems>();
+        for (const pin of multiUnitPinItems) {
+          const pins = pinsByPart.get(pin.partId) ?? [];
+          pins.push(pin);
+          pinsByPart.set(pin.partId, pins);
+        }
+        assert.equal(
+          [...pinsByPart.values()].some(
+            (pins) =>
+              pins.length > 0 &&
+              pins.every(
+                (pin) =>
+                  pin.name !== undefined &&
+                  SEPARATED_POWER_PIN_NAME_PATTERN.test(pin.name.trim())
+              )
+          ),
+          true,
+          "真实多单元器件必须包含可追溯的分离电源单元"
+        );
+
+        if (assemblyProjectArgument !== undefined) {
+          const assemblyOpened = structured(
+            await client.callTool({
+              name: "open_schematic_project",
+              arguments: { projectPath: assemblyProjectArgument }
+            })
+          );
+          assert.equal(assemblyOpened.ok, true);
+          const dnpResult = structured(
+            await client.callTool({
+              name: "list_components",
+              arguments: { assemblyStatus: "DNP", limit: 50 }
+            })
+          );
+          const dnpPage = dnpResult.page as {
+            readonly total: number;
+            readonly items: readonly {
+              readonly id: string;
+              readonly pageId: string;
+              readonly assembly: {
+                readonly status: string;
+                readonly reason: string;
+                readonly values: readonly unknown[];
+              };
+            }[];
+          };
+          assert.ok(dnpPage.total > 0, "真实工程必须包含显式 DNP 器件");
+          const selectedDnp = dnpPage.items[0];
+          assert.ok(selectedDnp);
+          assert.equal(selectedDnp.assembly.status, "DNP");
+          assert.equal(
+            selectedDnp.assembly.reason,
+            "EXPLICIT_ADD_INTO_BOM_NO"
+          );
+          assert.deepEqual(selectedDnp.assembly.values, ["no"]);
+          const dnpDetail = structured(
+            await client.callTool({
+              name: "get_component",
+              arguments: {
+                componentId: selectedDnp.id,
+                pageId: selectedDnp.pageId
+              }
+            })
+          );
+          assert.equal(
+            (
+              dnpDetail.lookup as {
+                readonly status: string;
+                readonly component: {
+                  readonly assembly: { readonly status: string };
+                };
+              }
+            ).component.assembly.status,
+            "DNP"
+          );
+        }
       }
     } finally {
       await client.close();
@@ -906,6 +1066,12 @@ async function main(): Promise<void> {
           projectArgument === undefined ? "NOT_REQUESTED" : "VERIFIED",
         realBusQuery:
           projectArgument === undefined ? "NOT_REQUESTED" : "VERIFIED",
+        realMultiUnitPinQuery:
+          projectArgument === undefined ? "NOT_REQUESTED" : "VERIFIED",
+        realSeparatedPowerUnitQuery:
+          projectArgument === undefined ? "NOT_REQUESTED" : "VERIFIED",
+        realAssemblyQuery:
+          assemblyProjectArgument === undefined ? "NOT_REQUESTED" : "VERIFIED",
         syntheticNetlistBinding:
           projectArgument === undefined ? "VERIFIED" : "NOT_REQUESTED",
         syntheticAssemblyTamper:

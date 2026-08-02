@@ -223,6 +223,7 @@ function createFixture(): V3Reducer {
     y: 2,
     length: 20,
     rotation: 0,
+    display: false,
     pinShape: "NONE"
   });
   attribute(reducer, symbol, 24, "pin-name", "pin-1", "Pin Name", "PA0");
@@ -314,7 +315,16 @@ test("将原理图、符号、引脚、器件和显式导线编译为可追溯 E
     instanceAttributeOverridesAppliedToPins: 0,
     instanceAttributeOverridesUnresolved: 2,
     componentOccurrences: 0,
+    componentOccurrencesPopulated: 0,
+    componentOccurrencesDnp: 0,
+    componentOccurrencesAssemblyUnknown: 0,
     components: 1,
+    componentsPopulated: 0,
+    componentsDnp: 0,
+    componentsAssemblyUnknown: 1,
+    componentsPinCompletenessComplete: 1,
+    componentsPinCompletenessPartial: 0,
+    componentsPinCompletenessUnknown: 0,
     componentsWithDesignator: 1,
     componentsWithDevice: 1,
     componentsWithSymbol: 1,
@@ -333,6 +343,7 @@ test("将原理图、符号、引脚、器件和显式导线编译为可追溯 E
     symbolTextsWithPartNotFound: 0,
     symbolPins: 1,
     symbolPinsWithNumber: 1,
+    symbolPinsHidden: 1,
     devices: 1,
     wires: 1,
     wiresWithExplicitNet: 1,
@@ -493,6 +504,8 @@ test("将原理图、符号、引脚、器件和显式导线编译为可追溯 E
   assert.equal(component.symbolBinding.state, "BOUND_DEVICE_DEFAULT");
   assert.equal(component.symbolBinding.deviceDefault?.value, "symbol-1");
   assert.equal(component.footprintBinding.state, "BOUND_COMPONENT_OVERRIDE");
+  assert.equal(component.pinCompleteness.status, "COMPLETE");
+  assert.equal(component.pinCompleteness.hiddenPinCount, 1);
   assert.equal(
     component.footprintBinding.deviceDefault?.value,
     "footprint-default"
@@ -515,6 +528,7 @@ test("将原理图、符号、引脚、器件和显式导线编译为可追溯 E
   assert.equal(pin.name, "PA0");
   assert.equal(pin.number, "1");
   assert.equal(pin.electricalType, "BI");
+  assert.equal(pin.display, false);
 
   const wire = ir.wires[0];
   assert.ok(wire);
@@ -535,6 +549,7 @@ test("将原理图、符号、引脚、器件和显式导线编译为可追溯 E
     ["NO_CONNECT", "NO_CONNECT"]
   );
   assert.equal(ir.pinInstances[0]?.endpointKind, "PART_SYMBOL_PIN");
+  assert.equal(ir.pinInstances[0]?.display, false);
   assert.match(ir.irSha256, /^[a-f0-9]{64}$/);
   assert.deepEqual(ir, compileV3ToEdaIr(reducer, ARCHIVE_SHA));
 });

@@ -377,6 +377,72 @@ export interface IrEffectiveAttribute {
   readonly provenance: readonly IrRecordProvenance[];
 }
 
+export type IrComponentAssemblyStatus = "POPULATED" | "DNP" | "UNKNOWN";
+
+export type IrComponentAssemblyReason =
+  | "EXPLICIT_ADD_INTO_BOM_YES"
+  | "EXPLICIT_ADD_INTO_BOM_NO"
+  | "ADD_INTO_BOM_MISSING"
+  | "ADD_INTO_BOM_CONFLICT"
+  | "ADD_INTO_BOM_INVALID"
+  | "VARIANT_APPLICATION_NOT_SUPPORTED";
+
+export interface IrComponentAssembly {
+  readonly status: IrComponentAssemblyStatus;
+  readonly reason: IrComponentAssemblyReason;
+  readonly attributeKey: "Add into BOM";
+  readonly values: readonly JsonValue[];
+  readonly resolution:
+    | IrEffectiveAttribute["resolution"]
+    | "MISSING"
+    | "VARIANT_NOT_APPLIED";
+  readonly evidenceClass: "EXPLICIT_PROJECT_RECORD" | "DETERMINISTIC_RULE";
+  readonly truthStatus: "NOT_VERIFIED";
+  readonly semanticRuleSetVersion: "schemcp.semantic-rules/1";
+  readonly provenance: readonly IrRecordProvenance[];
+}
+
+export type IrComponentPinCompletenessStatus =
+  | "COMPLETE"
+  | "PARTIAL"
+  | "UNKNOWN";
+
+export type IrComponentPinCompletenessReason =
+  | "SINGLE_SYMBOL_PART_COMPLETE"
+  | "ALL_SYMBOL_PARTS_INSTANTIATED"
+  | "SYMBOL_UNIT_MISSING"
+  | "SYMBOL_REFERENCE_MISSING"
+  | "SYMBOL_NOT_FOUND"
+  | "SYMBOL_PART_DECLARATION_MISSING"
+  | "SYMBOL_PART_NOT_FOUND"
+  | "LOGICAL_COMPONENT_AMBIGUOUS"
+  | "INSTANCE_UNIT_CONTEXT_INCOMPLETE"
+  | "HIDDEN_PIN_SOURCE_UNRESOLVED";
+
+export interface IrComponentUnitReference {
+  readonly componentId: string;
+  readonly pageId: string;
+  readonly partId: string;
+}
+
+export interface IrComponentPinCompleteness {
+  readonly logicalComponentId: string;
+  readonly status: IrComponentPinCompletenessStatus;
+  readonly reason: IrComponentPinCompletenessReason;
+  readonly units: readonly IrComponentUnitReference[];
+  readonly declaredPartIds: readonly string[];
+  readonly instantiatedPartIds: readonly string[];
+  readonly missingPartIds: readonly string[];
+  readonly duplicatePartIds: readonly string[];
+  readonly symbolPinCount: number;
+  readonly instantiatedPinCount: number;
+  readonly hiddenPinCount: number;
+  readonly evidenceClass: "DETERMINISTIC_RULE";
+  readonly truthStatus: "NOT_VERIFIED";
+  readonly semanticRuleSetVersion: "schemcp.semantic-rules/1";
+  readonly provenance: readonly IrRecordProvenance[];
+}
+
 export interface IrComponentOccurrencePinOverride {
   readonly symbolPinId: string;
   readonly attributes: JsonObject;
@@ -392,7 +458,9 @@ export interface IrComponentOccurrence {
   readonly designator?: string;
   readonly attributes: readonly IrEffectiveAttribute[];
   readonly pinOverrides: readonly IrComponentOccurrencePinOverride[];
-  readonly populationStatus: "BASE_DESIGN";
+  readonly assembly: IrComponentAssembly;
+  readonly pinCompleteness: IrComponentPinCompleteness;
+  readonly populationStatus: IrComponentAssemblyStatus;
   readonly pathTruth: "EXPLICIT_INSTANCE_DOCUMENT_RESOLVED";
   readonly electricalTruth: "NOT_VERIFIED";
 }
@@ -442,6 +510,8 @@ export interface IrComponent {
   readonly footprintId?: string;
   readonly symbolBinding: IrComponentLibraryBinding;
   readonly footprintBinding: IrComponentLibraryBinding;
+  readonly assembly: IrComponentAssembly;
+  readonly pinCompleteness: IrComponentPinCompleteness;
   readonly attributes: readonly IrAttribute[];
   readonly provenance: IrRecordProvenance;
   readonly extensions: IrEasyEdaExtension;
@@ -504,6 +574,7 @@ export interface IrSymbolPin {
   };
   readonly length: number;
   readonly rotation: number;
+  readonly display?: boolean;
   readonly name?: string;
   readonly number?: string;
   readonly electricalType?: string | number;
@@ -659,6 +730,7 @@ export interface IrPinInstance {
   readonly symbolId: string;
   readonly symbolPinId: string;
   readonly partId: string;
+  readonly display?: boolean;
   readonly endpointKind: IrPinEndpointKind;
   readonly symbolType?: number;
   readonly designator?: string;
@@ -833,7 +905,16 @@ export interface EdaIrSummary {
   readonly instanceAttributeOverridesAppliedToPins: number;
   readonly instanceAttributeOverridesUnresolved: number;
   readonly componentOccurrences: number;
+  readonly componentOccurrencesPopulated: number;
+  readonly componentOccurrencesDnp: number;
+  readonly componentOccurrencesAssemblyUnknown: number;
   readonly components: number;
+  readonly componentsPopulated: number;
+  readonly componentsDnp: number;
+  readonly componentsAssemblyUnknown: number;
+  readonly componentsPinCompletenessComplete: number;
+  readonly componentsPinCompletenessPartial: number;
+  readonly componentsPinCompletenessUnknown: number;
   readonly componentsWithDesignator: number;
   readonly componentsWithDevice: number;
   readonly componentsWithSymbol: number;
@@ -852,6 +933,7 @@ export interface EdaIrSummary {
   readonly symbolTextsWithPartNotFound: number;
   readonly symbolPins: number;
   readonly symbolPinsWithNumber: number;
+  readonly symbolPinsHidden: number;
   readonly devices: number;
   readonly wires: number;
   readonly wiresWithExplicitNet: number;

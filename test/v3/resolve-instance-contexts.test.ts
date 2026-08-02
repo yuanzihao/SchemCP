@@ -21,6 +21,39 @@ const PROVENANCE: IrRecordProvenance = {
   line: 1
 };
 
+function effectiveState(id: string, pageId: string) {
+  return {
+    assembly: {
+      status: "UNKNOWN" as const,
+      reason: "ADD_INTO_BOM_MISSING" as const,
+      attributeKey: "Add into BOM" as const,
+      values: [],
+      resolution: "MISSING" as const,
+      evidenceClass: "DETERMINISTIC_RULE" as const,
+      truthStatus: "NOT_VERIFIED" as const,
+      semanticRuleSetVersion: "schemcp.semantic-rules/1" as const,
+      provenance: []
+    },
+    pinCompleteness: {
+      logicalComponentId: `logical-${pageId}-${id}`,
+      status: "COMPLETE" as const,
+      reason: "SINGLE_SYMBOL_PART_COMPLETE" as const,
+      units: [{ componentId: id, pageId, partId: "part-a" }],
+      declaredPartIds: ["part-a"],
+      instantiatedPartIds: ["part-a"],
+      missingPartIds: [],
+      duplicatePartIds: [],
+      symbolPinCount: 1,
+      instantiatedPinCount: 1,
+      hiddenPinCount: 0,
+      evidenceClass: "DETERMINISTIC_RULE" as const,
+      truthStatus: "NOT_VERIFIED" as const,
+      semanticRuleSetVersion: "schemcp.semantic-rules/1" as const,
+      provenance: []
+    }
+  };
+}
+
 function page(id: string, sortOrder: number): IrSchematicPage {
   return {
     id,
@@ -58,6 +91,7 @@ function component(
       state: "UNRESOLVED_DEVICE_REFERENCE_MISSING",
       componentAttributes: []
     },
+    ...effectiveState(id, pageId),
     attributes: [],
     provenance: {
       ...PROVENANCE,

@@ -30,6 +30,8 @@ npx -y @yuanzihao/schemcp
 
 所有列表工具均有页大小上限。游标绑定工程、查询种类和筛选条件，不能跨查询复用。重复位号不会被静默选择，调用方应提供页面或组件 ID 消歧。
 
+`list_components` 可按 `assemblyStatus` 和 `pinCompletenessStatus` 筛选。装配状态只把有效 `Add into BOM=yes/no` 映射为 `POPULATED/DNP`，并保留 Device 默认值、组件属性或层级实例覆盖的来源；缺失、冲突、非法值以及尚未应用的 Variant 一律返回 `UNKNOWN`。`get_component_pins` 只在 Symbol `PART` 集合可证明完整时合并同位号多单元器件，显式 `display=false` 引脚不会被丢弃。
+
 ## 工程与附件
 
 同一进程最多打开 4 个工程。相同内容按哈希去重；打开失败不会替换现有活动工程；关闭工程不会删除用户文件，并会使相关装配和游标失效。

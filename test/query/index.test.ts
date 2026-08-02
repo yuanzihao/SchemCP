@@ -36,6 +36,39 @@ const PROVENANCE: IrRecordProvenance = {
   line: 2
 };
 
+function effectiveState(id: string, pageId: string) {
+  return {
+    assembly: {
+      status: "UNKNOWN" as const,
+      reason: "ADD_INTO_BOM_MISSING" as const,
+      attributeKey: "Add into BOM" as const,
+      values: [],
+      resolution: "MISSING" as const,
+      evidenceClass: "DETERMINISTIC_RULE" as const,
+      truthStatus: "NOT_VERIFIED" as const,
+      semanticRuleSetVersion: "schemcp.semantic-rules/1" as const,
+      provenance: []
+    },
+    pinCompleteness: {
+      logicalComponentId: `logical-${pageId}-${id}`,
+      status: "COMPLETE" as const,
+      reason: "SINGLE_SYMBOL_PART_COMPLETE" as const,
+      units: [{ componentId: id, pageId, partId: "part-a" }],
+      declaredPartIds: ["part-a"],
+      instantiatedPartIds: ["part-a"],
+      missingPartIds: [],
+      duplicatePartIds: [],
+      symbolPinCount: 2,
+      instantiatedPinCount: 2,
+      hiddenPinCount: 0,
+      evidenceClass: "DETERMINISTIC_RULE" as const,
+      truthStatus: "NOT_VERIFIED" as const,
+      semanticRuleSetVersion: "schemcp.semantic-rules/1" as const,
+      provenance: []
+    }
+  };
+}
+
 function component(
   id: string,
   designator: string,
@@ -61,6 +94,7 @@ function component(
       state: "UNRESOLVED_DEVICE_REFERENCE_MISSING",
       componentAttributes: []
     },
+    ...effectiveState(id, pageId),
     attributes: [],
     provenance: { ...PROVENANCE, documentId: pageId, recordId: id },
     extensions: { easyeda: {} }
@@ -510,7 +544,16 @@ function fixture(): EdaIr {
       instanceAttributeOverridesAppliedToPins: 0,
       instanceAttributeOverridesUnresolved: 1,
       componentOccurrences: 0,
+      componentOccurrencesPopulated: 0,
+      componentOccurrencesDnp: 0,
+      componentOccurrencesAssemblyUnknown: 0,
       components: components.length,
+      componentsPopulated: 0,
+      componentsDnp: 0,
+      componentsAssemblyUnknown: components.length,
+      componentsPinCompletenessComplete: components.length,
+      componentsPinCompletenessPartial: 0,
+      componentsPinCompletenessUnknown: 0,
       componentsWithDesignator: components.length,
       componentsWithDevice: 0,
       componentsWithSymbol: components.length,
@@ -529,6 +572,7 @@ function fixture(): EdaIr {
       symbolTextsWithPartNotFound: 0,
       symbolPins: symbolPins.length,
       symbolPinsWithNumber: symbolPins.length,
+      symbolPinsHidden: 0,
       devices: 0,
       wires: wires.length,
       wiresWithExplicitNet: wires.length,
@@ -657,7 +701,22 @@ function occurrenceFixture(): EdaIr {
             }
           }
         ],
-        populationStatus: "BASE_DESIGN",
+        assembly: {
+          status: "UNKNOWN",
+          reason: "ADD_INTO_BOM_MISSING",
+          attributeKey: "Add into BOM",
+          values: [],
+          resolution: "MISSING",
+          evidenceClass: "DETERMINISTIC_RULE",
+          truthStatus: "NOT_VERIFIED",
+          semanticRuleSetVersion: "schemcp.semantic-rules/1",
+          provenance: []
+        },
+        pinCompleteness: {
+          ...base.components[0]!.pinCompleteness,
+          logicalComponentId: "occurrence-logical"
+        },
+        populationStatus: "UNKNOWN",
         pathTruth: "EXPLICIT_INSTANCE_DOCUMENT_RESOLVED",
         electricalTruth: "NOT_VERIFIED"
       }
@@ -666,7 +725,8 @@ function occurrenceFixture(): EdaIr {
       ...base.summary,
       instanceContexts: base.instanceContexts.length + 1,
       instanceContextsResolved: 1,
-      componentOccurrences: 1
+      componentOccurrences: 1,
+      componentOccurrencesAssemblyUnknown: 1
     }
   };
 }
@@ -1114,6 +1174,65 @@ test("组件列表具有确定排序、有界分页和筛选域绑定 cursor", (
   assert.throws(
     () => index.listComponents({ limit: 51 }),
     (error) => error instanceof QueryError && error.code === "QUERY_INVALID_LIMIT"
+  );
+});
+
+test("组件查询公开 DNP 装配状态、完整性筛选并将 Variant 绑定到游标域", () => {
+  const base = fixture();
+  const components = base.components.map((item, index) => ({
+    ...item,
+    assembly:
+      index === 0
+        ? {
+            status: "DNP" as const,
+            reason: "EXPLICIT_ADD_INTO_BOM_NO" as const,
+            attributeKey: "Add into BOM" as const,
+            values: ["no"],
+            resolution: "COMPONENT_EXPLICIT" as const,
+            evidenceClass: "EXPLICIT_PROJECT_RECORD" as const,
+            truthStatus: "NOT_VERIFIED" as const,
+            semanticRuleSetVersion: "schemcp.semantic-rules/1" as const,
+            provenance: [item.provenance]
+          }
+        : item.assembly
+  }));
+  const index = new EdaIrQueryIndex({ ...base, components });
+
+  const dnp = index.listComponents({ assemblyStatus: "DNP", limit: 1 });
+  assert.equal(dnp.total, 1);
+  assert.equal(dnp.items[0]?.assembly.status, "DNP");
+  assert.equal(dnp.items[0]?.assembly.reason, "EXPLICIT_ADD_INTO_BOM_NO");
+
+  const complete = index.listComponents({
+    pinCompletenessStatus: "COMPLETE"
+  });
+  assert.equal(complete.total, 3);
+
+  const selectedVariant = index.listComponents({
+    variantId: "variant-1",
+    assemblyStatus: "UNKNOWN",
+    limit: 1
+  });
+  assert.equal(selectedVariant.total, 3);
+  assert.equal(
+    selectedVariant.items[0]?.assembly.reason,
+    "VARIANT_APPLICATION_NOT_SUPPORTED"
+  );
+  assert.throws(
+    () => index.listComponents({ variantId: "missing-variant" }),
+    (error: unknown) =>
+      error instanceof QueryError && error.code === "QUERY_INVALID_TEXT"
+  );
+  assert.throws(
+    () =>
+      index.listComponents({
+        variantId: "variant-2",
+        assemblyStatus: "UNKNOWN",
+        limit: 1,
+        cursor: selectedVariant.nextCursor
+      }),
+    (error: unknown) =>
+      error instanceof QueryError && error.code === "QUERY_INVALID_CURSOR"
   );
 });
 
@@ -1805,6 +1924,43 @@ test("组件引脚返回实例化几何候选但保持电气真值未验证", ()
       ]
     );
     assert.equal(result.pins.items[0]?.endpointKind, "PART_SYMBOL_PIN");
+  }
+});
+
+test("完整多单元逻辑器件查询合并各 PART 的引脚且保留所属组件", () => {
+  const base = fixture();
+  const unitA = base.components[0]!;
+  const unitB = base.components[1]!;
+  const units = [
+    { componentId: unitA.id, pageId: unitA.pageId, partId: "part-a" },
+    { componentId: unitB.id, pageId: unitB.pageId, partId: "part-b" }
+  ];
+  const components = base.components.map((item) =>
+    item.id === unitA.id || item.id === unitB.id
+      ? {
+          ...item,
+          partId: item.id === unitA.id ? "part-a" : "part-b",
+          pinCompleteness: {
+            ...item.pinCompleteness,
+            logicalComponentId: "logical-u1",
+            status: "COMPLETE" as const,
+            reason: "ALL_SYMBOL_PARTS_INSTANTIATED" as const,
+            units,
+            declaredPartIds: ["part-a", "part-b"],
+            instantiatedPartIds: ["part-a", "part-b"]
+          }
+        }
+      : item
+  );
+  const index = new EdaIrQueryIndex({ ...base, components });
+  const result = index.getComponentPins({ componentId: unitA.id });
+  assert.equal(result.status, "FOUND");
+  if (result.status === "FOUND" && "pins" in result) {
+    assert.equal(result.pins.total, 4);
+    assert.deepEqual(
+      [...new Set(result.pins.items.map((item) => item.componentId))].sort(),
+      [unitA.id, unitB.id].sort()
+    );
   }
 });
 

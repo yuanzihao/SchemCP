@@ -9,6 +9,7 @@ import {
   resolveInstanceContexts,
   type RawInstanceContext
 } from "../hierarchy/resolve-instance-contexts.js";
+import { compileEffectiveComponentStates } from "../variant/effective-component-state.js";
 import {
   compileComponentLibraryBindings,
   type ComponentBeforeLibraryBindings
@@ -2141,6 +2142,8 @@ function compileSymbol(
       typeof inner.pinShape === "number" || typeof inner.pinShape === "string"
         ? inner.pinShape
         : undefined;
+    const display =
+      typeof inner.display === "boolean" ? inner.display : undefined;
     if (number === undefined) {
       addDiagnostic(state.diagnostics, {
         code: "IR_PIN_NUMBER_MISSING",
@@ -2157,6 +2160,7 @@ function compileSymbol(
       position: { x, y },
       length,
       rotation,
+      ...(display === undefined ? {} : { display }),
       ...(name === undefined ? {} : { name }),
       ...(number === undefined ? {} : { number }),
       ...(electricalType === undefined ? {} : { electricalType }),
@@ -3139,9 +3143,9 @@ export function compileV3ToEdaIr(
     componentInputs,
     devices
   );
-  const components = componentBindingCompilation.components;
+  const boundComponents = componentBindingCompilation.components;
   const componentBindingSummary = componentBindingCompilation.summary;
-  const componentDeviceReferencesNotFound = components.filter(
+  const componentDeviceReferencesNotFound = boundComponents.filter(
     (component) =>
       component.symbolBinding.state === "UNRESOLVED_DEVICE_NOT_FOUND" ||
       component.footprintBinding.state === "UNRESOLVED_DEVICE_NOT_FOUND"
@@ -3220,6 +3224,14 @@ export function compileV3ToEdaIr(
     const symbolOrder = compareText(left.symbolId, right.symbolId);
     return symbolOrder !== 0 ? symbolOrder : compareText(left.id, right.id);
   });
+  const components = compileEffectiveComponentStates(
+    boundComponents,
+    devices,
+    schematicPages,
+    symbols,
+    symbolParts,
+    symbolPins
+  );
   const wires = state.wires.sort((left, right) => {
     const pageOrder = compareText(left.pageId, right.pageId);
     return pageOrder !== 0 ? pageOrder : compareText(left.id, right.id);
@@ -3693,7 +3705,33 @@ export function compileV3ToEdaIr(
     instanceAttributeOverridesUnresolved:
       instanceResolutionSummary.unresolvedOverrides,
     componentOccurrences: componentOccurrences.length,
+    componentOccurrencesPopulated: componentOccurrences.filter(
+      (item) => item.assembly.status === "POPULATED"
+    ).length,
+    componentOccurrencesDnp: componentOccurrences.filter(
+      (item) => item.assembly.status === "DNP"
+    ).length,
+    componentOccurrencesAssemblyUnknown: componentOccurrences.filter(
+      (item) => item.assembly.status === "UNKNOWN"
+    ).length,
     components: components.length,
+    componentsPopulated: components.filter(
+      (item) => item.assembly.status === "POPULATED"
+    ).length,
+    componentsDnp: components.filter((item) => item.assembly.status === "DNP")
+      .length,
+    componentsAssemblyUnknown: components.filter(
+      (item) => item.assembly.status === "UNKNOWN"
+    ).length,
+    componentsPinCompletenessComplete: components.filter(
+      (item) => item.pinCompleteness.status === "COMPLETE"
+    ).length,
+    componentsPinCompletenessPartial: components.filter(
+      (item) => item.pinCompleteness.status === "PARTIAL"
+    ).length,
+    componentsPinCompletenessUnknown: components.filter(
+      (item) => item.pinCompleteness.status === "UNKNOWN"
+    ).length,
     componentsWithDesignator: components.filter((item) => item.designator !== undefined)
       .length,
     componentsWithDevice: components.filter((item) => item.deviceId !== undefined).length,
@@ -3729,6 +3767,7 @@ export function compileV3ToEdaIr(
     ).length,
     symbolPins: symbolPins.length,
     symbolPinsWithNumber: symbolPins.filter((item) => item.number !== undefined).length,
+    symbolPinsHidden: symbolPins.filter((item) => item.display === false).length,
     devices: devices.length,
     wires: wires.length,
     wiresWithExplicitNet: wires.filter((item) => item.explicitNetName !== undefined).length,

@@ -32,6 +32,39 @@ const SHORT_SYMBOL: IrSymbol = {
   extensions: { easyeda: {} }
 };
 
+function effectiveState(id: string) {
+  return {
+    assembly: {
+      status: "UNKNOWN" as const,
+      reason: "ADD_INTO_BOM_MISSING" as const,
+      attributeKey: "Add into BOM" as const,
+      values: [],
+      resolution: "MISSING" as const,
+      evidenceClass: "DETERMINISTIC_RULE" as const,
+      truthStatus: "NOT_VERIFIED" as const,
+      semanticRuleSetVersion: "schemcp.semantic-rules/1" as const,
+      provenance: []
+    },
+    pinCompleteness: {
+      logicalComponentId: `logical-${id}`,
+      status: "COMPLETE" as const,
+      reason: "SINGLE_SYMBOL_PART_COMPLETE" as const,
+      units: [{ componentId: id, pageId: "page-a", partId: "part-a" }],
+      declaredPartIds: ["part-a"],
+      instantiatedPartIds: ["part-a"],
+      missingPartIds: [],
+      duplicatePartIds: [],
+      symbolPinCount: 2,
+      instantiatedPinCount: 2,
+      hiddenPinCount: 0,
+      evidenceClass: "DETERMINISTIC_RULE" as const,
+      truthStatus: "NOT_VERIFIED" as const,
+      semanticRuleSetVersion: "schemcp.semantic-rules/1" as const,
+      provenance: []
+    }
+  };
+}
+
 function component(id: string): IrComponent {
   return {
     id,
@@ -52,6 +85,7 @@ function component(id: string): IrComponent {
       state: "UNRESOLVED_DEVICE_REFERENCE_MISSING",
       componentAttributes: []
     },
+    ...effectiveState(id),
     attributes: [],
     provenance: { ...SOURCE, recordId: id },
     extensions: { easyeda: {} }

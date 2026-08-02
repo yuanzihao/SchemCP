@@ -32,6 +32,8 @@ License: Apache-2.0
 - **Multi-project workspace**: one session can hold up to four projects and user-declared assemblies.
 - **Component context**: resolve both supported INSTANCE path encodings and query base components or effective designators, attributes, pin overrides, and network evidence in one hierarchy occurrence.
 - **Explicit bus facts**: support official standalone `BUSENTRY` records and the embedded `busEntry` form seen in current exports while preserving `NET`, explicit order, and coordinates without expanding bus names.
+- **Effective assembly state**: resolve `Add into BOM` with a fixed Device-default, component-attribute, and hierarchy-instance precedence; only explicit `yes/no` values produce `POPULATED/DNP`, otherwise the result remains `UNKNOWN`.
+- **Complete logical-component pins**: merge multi-unit symbols and separated power units by schematic, designator, Symbol, and `PART`; missing, duplicate, or incomplete source data returns `PARTIAL/UNKNOWN`, while explicitly hidden pins remain visible to queries.
 - **Optional `.enet` evidence**: bind a netlist to one project when exact pin-to-net endpoint comparison is needed.
 - **Explicit truth boundaries**: project facts, part facts, and engineering inferences remain distinguishable.
 - **Read-only and bounded**: tools use pagination, stable error codes, and input limits; SchemCP does not edit schematics or generate firmware.
