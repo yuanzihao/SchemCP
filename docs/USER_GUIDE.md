@@ -25,7 +25,7 @@ schemcp --version
 4. MCU 引脚调用方改用 `status=USED/EXPLICIT_NC/UNUSED/UNKNOWN/DNP_COMPONENT` 做目标级判断，并保留 `usageStatus`、证据和未解析原因用于审计。
 5. 私有真实工程验收清单按 1.5.0 契约重新生成并人工核对。禁止自动接受旧基线差异，也禁止把私有工程、路径、UUID、网络名或位号清单提交到仓库。
 
-仓库中的 0.2.0 仍是 RC。正式发布前不要把 `npx -y @yuanzihao/schemcp` 视为已经指向 0.2.0，应先核对 npm 官方公开版本。
+0.2.0 已作为稳定版本发布。生产环境升级前仍应通过 npm 官方页面或 `npm view @yuanzihao/schemcp version` 核对公开版本与完整性信息。Windows x64 已通过 CI、离线安装和合成工程协议验收，但尚未完成私有真实嘉立创工程主机调用，不应把其他平台的真实工程回执当作 Windows 证据。
 
 ### 支持的工程格式
 

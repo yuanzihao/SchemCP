@@ -14,7 +14,7 @@ SchemCP is a local-first, read-only, deterministic, and auditable Model Context 
 
 SchemCP is a schematic context service for MCP clients. The name can be read as `Sche[m] + MCP → SchemCP`, with the letter `M` shared by both words.
 
-Current repository candidate: `0.2.0` (not published)
+Current stable release: `0.2.0`
 
 MCP Registry name: `io.github.yuanzihao/schemcp`
 
@@ -22,7 +22,7 @@ npm package: `@yuanzihao/schemcp`
 
 License: Apache-2.0
 
-> The currently published stable npm version remains `@yuanzihao/schemcp@0.1.0`. Repository version `0.2.0` remains an RC candidate until Windows x64 real-host acceptance and explicit publication authorization are complete. Treat the [official npm page](https://www.npmjs.com/package/@yuanzihao/schemcp) as the source of truth for published versions and integrity metadata.
+> The current stable npm release is `@yuanzihao/schemcp@0.2.0`. This release passed Linux, macOS, and Windows CI plus private real-project acceptance on macOS. No private real JLCEDA project has been exercised on a Windows x64 host, so that evidence is not claimed. Treat the [official npm page](https://www.npmjs.com/package/@yuanzihao/schemcp) as the source of truth for published versions and integrity metadata.
 
 ## Why SchemCP
 
@@ -50,17 +50,17 @@ SchemCP is an independent community project and is not affiliated with, authoriz
 
 ### Operating systems
 
-| Platform | 0.2.0 RC status | Release gate |
+| Platform | 0.2.0 status | Verification evidence |
 | --- | --- | --- |
 | Linux x64 | Supported | Full tests, coverage, two deterministic packs, offline install, and MCP protocol acceptance |
 | macOS arm64/x64 | Supported | Full tests, two deterministic packs, offline install, and MCP protocol acceptance |
-| Windows x64 | Compatibility implemented; real-host acceptance pending | Full tests, two deterministic packs, offline installation, and synthetic project/netlist/assembly acceptance pass; real Windows private-project acceptance is not yet claimed |
+| Windows x64 | Supported; private real-project host acceptance pending | Windows CI, full tests, two deterministic packs, offline installation, and synthetic project/netlist/assembly acceptance pass; real Windows private-project invocation is not claimed |
 
 Linux and macOS enforce private `0700/0600` directory and file modes. Windows does not present `chmod` as a POSIX permission guarantee: SchemCP still enforces absolute canonical paths, exclusive creation, regular files, and symbolic-link/link-type reparse-point rejection, while every MCP result reports `WINDOWS_ACL_NOT_VERIFIED` under `platformSecurity`. Organizations requiring managed ACLs should configure Windows directory ACLs at deployment time.
 
 ### Input formats and capabilities
 
-| Capability | 0.2.0 RC status |
+| Capability | 0.2.0 status |
 | --- | --- |
 | Offline JLCEDA Pro `.epro2` schematic parsing | Supported |
 | Project-scoped user-provided `.enet` binding | Supported; authenticity and project binding remain unverified |
@@ -102,7 +102,7 @@ npx -y @yuanzihao/schemcp mcp
 - Discard saved pagination cursors. Cursors are bound to the project, occurrence, Variant, filters, and semantic-rule version and are not portable across versions.
 - Update MCU-pin consumers to use the goal-level `USED/EXPLICIT_NC/UNUSED/UNKNOWN/DNP_COMPONENT` state while retaining the finer `usageStatus` as evidence. A 0.1.x “no wire” observation must never be migrated into `UNUSED`.
 - Regenerate every private real-project acceptance manifest. The 0.2.0 manifest contract is 1.5.0; old baselines must not be auto-upgraded or auto-accepted and require manual review against real JLCEDA Pro exports.
-- `0.2.0` remains an RC candidate. Wait for explicit publication authorization and confirmation of the public package version before using a production npm upgrade command.
+- Before upgrading, confirm the public version and integrity metadata on npm or with `npm view @yuanzihao/schemcp version`.
 
 ## Client setup
 

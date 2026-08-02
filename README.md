@@ -14,7 +14,7 @@ SchemCP 是一个本地优先、只读、确定性、可审计的嘉立创 EDA �
 
 SchemCP 是面向 MCP 客户端的原理图上下文服务。名称可以理解为 `Sche[m] + MCP → SchemCP`，共享了字母 `M`。
 
-当前仓库候选版本：`0.2.0`（尚未发布）
+当前稳定版本：`0.2.0`
 
 MCP Registry 名称：`io.github.yuanzihao/schemcp`
 
@@ -22,7 +22,7 @@ npm 包：`@yuanzihao/schemcp`
 
 许可证：Apache-2.0
 
-> npm 当前已发布稳定版仍为 `@yuanzihao/schemcp@0.1.0`。仓库中的 `0.2.0` 在完成 Windows x64 真实主机验收和明确发布授权前只作为 RC 候选；版本与完整性信息以 [npm 官方页面](https://www.npmjs.com/package/@yuanzihao/schemcp) 为准。
+> npm 当前稳定版为 `@yuanzihao/schemcp@0.2.0`。本版本已完成 Linux、macOS、Windows CI 与 macOS 私有真实工程验收；Windows x64 尚未使用私有真实嘉立创工程完成主机验收，因此不声明该项证据。版本与完整性信息以 [npm 官方页面](https://www.npmjs.com/package/@yuanzihao/schemcp) 为准。
 
 ## 为什么使用 SchemCP
 
@@ -50,17 +50,17 @@ SchemCP 是独立的社区开源项目，与嘉立创、立创商城、JLCEDA �
 
 ### 操作系统
 
-| 平台 | 0.2.0 RC 支持状态 | 发布门禁 |
+| 平台 | 0.2.0 支持状态 | 验证证据 |
 | --- | --- | --- |
 | Linux x64 | 支持 | 全量测试、覆盖率、两次确定性打包、离线安装和 MCP 协议验收 |
 | macOS arm64/x64 | 支持 | 全量测试、两次确定性打包、离线安装和 MCP 协议验收 |
-| Windows x64 | 兼容实现，真实主机验收待补 | 全量测试、两次确定性打包、离线安装和合成工程/网表/装配协议验收已通过；当前不声称真实 Windows 私有工程验收完成 |
+| Windows x64 | 支持，私有真实工程主机验收未完成 | Windows CI、全量测试、两次确定性打包、离线安装和合成工程/网表/装配协议验收已通过；不声称已完成真实 Windows 私有工程调用 |
 
 Linux 与 macOS 对私有目录和文件强制检查 `0700/0600`。Windows 不把 `chmod` 结果冒充 POSIX 权限保证：服务仍强制绝对规范路径、排他创建、普通文件、符号链接与链接型 reparse point 拒绝，并在每个 MCP 结果的 `platformSecurity` 中明确返回 `WINDOWS_ACL_NOT_VERIFIED`。需要受管 ACL 的组织应在部署层配置 Windows 目录 ACL。
 
 ### 输入格式与能力
 
-| 能力 | 0.2.0 RC 状态 |
+| 能力 | 0.2.0 状态 |
 | --- | --- |
 | 嘉立创 EDA 专业版 `.epro2` 原理图离线解析 | 支持 |
 | 用户提供的 `.enet` 按工程绑定 | 支持，真实性与工程绑定保持未验证 |
@@ -102,7 +102,7 @@ npx -y @yuanzihao/schemcp mcp
 - 丢弃升级前保存的分页游标。游标绑定工程、实例、Variant、筛选条件和语义规则版本，不能跨版本复用。
 - 调整 MCU 引脚消费逻辑：优先读取目标级 `USED/EXPLICIT_NC/UNUSED/UNKNOWN/DNP_COMPONENT`，同时保留细分 `usageStatus` 作为证据；不得把旧版“无导线”结果迁移成 `UNUSED`。
 - 重新生成任何私有真实工程验收清单。0.2.0 的清单契约为 1.5.0，旧基线不得自动升级或自动接受差异，必须在真实嘉立创 EDA 导出工程上人工核对后冻结。
-- `0.2.0` 当前仍是 RC 候选。正式 npm 升级命令应等待发布授权与公开版本确认，不能把仓库版本号当成已发布版本。
+- 升级前通过 npm 官方页面或 `npm view @yuanzihao/schemcp version` 核对公开版本与完整性信息。
 
 ## 接入客户端
 
