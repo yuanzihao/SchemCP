@@ -1674,6 +1674,111 @@ export function createEdaMcpServer(
   );
 
   server.registerTool(
+    "list_buses",
+    {
+      title: "分页列出显式 BUS 或 BUSENTRY",
+      description:
+        "分页返回显式 BUS 本体或 BUSENTRY 入口。兼容官方独立 BUSENTRY 与当前导出的内嵌 busEntry；保留 NET、order、坐标、旋转、编码和绑定状态，不展开 DATA[7:0] 等名称，也不靠几何猜测独立入口归属。",
+      inputSchema: {
+        view: z
+          .enum(["BUSES", "ENTRIES"])
+          .optional()
+          .describe("返回 BUS 列表或 BUSENTRY 列表；默认 BUSES"),
+        pageId: z
+          .string()
+          .min(1)
+          .max(QUERY_LIMITS.maxTextLength)
+          .optional()
+          .describe("可选精确原理图页 ID"),
+        busId: z
+          .string()
+          .min(1)
+          .max(QUERY_LIMITS.maxTextLength)
+          .optional()
+          .describe("可选精确 BUS ID；ENTRIES 视图只返回已绑定该 BUS 的入口"),
+        netNameContains: z
+          .string()
+          .min(1)
+          .max(QUERY_LIMITS.maxTextLength)
+          .optional()
+          .describe("仅 BUSES 视图：不区分大小写的 NET 子串"),
+        busEncoding: z
+          .enum([
+            "OFFICIAL_DOTS_WITH_SEPARATE_BUSENTRY_RECORDS",
+            "OBSERVED_EMBEDDED_BUSENTRY_MAP",
+            "HYBRID_DOTS_WITH_EMBEDDED_BUSENTRY_MAP"
+          ])
+          .optional()
+          .describe("仅 BUSES 视图：显式 BUS 编码筛选"),
+        entryEncoding: z
+          .enum([
+            "OFFICIAL_SEPARATE_BUSENTRY_RECORD",
+            "OBSERVED_EMBEDDED_BUSENTRY_MAP_ITEM"
+          ])
+          .optional()
+          .describe("仅 ENTRIES 视图：BUSENTRY 编码筛选"),
+        associationStatus: z
+          .enum([
+            "EMBEDDED_IN_BUS_RECORD",
+            "EXPLICIT_PARENT_ID",
+            "SEPARATE_RECORD_WITHOUT_EXPLICIT_BUS_ID",
+            "EXPLICIT_PARENT_ID_NOT_FOUND"
+          ])
+          .optional()
+          .describe("仅 ENTRIES 视图：入口归属状态筛选"),
+        ...PAGE_INPUT
+      },
+      annotations: READ_ONLY_ANNOTATIONS
+    },
+    (args) =>
+      runQuery(() => {
+        const view = args.view ?? "BUSES";
+        if (view === "ENTRIES") {
+          if (
+            args.netNameContains !== undefined ||
+            args.busEncoding !== undefined
+          ) {
+            throw new QueryError(
+              "QUERY_INVALID_TEXT",
+              "ENTRIES 视图不能使用 NET 或 BUS 编码筛选。"
+            );
+          }
+          return {
+            view,
+            page: index.listBusEntries({
+              pageId: args.pageId,
+              busId: args.busId,
+              encoding: args.entryEncoding,
+              associationStatus: args.associationStatus,
+              limit: args.limit,
+              cursor: args.cursor
+            })
+          };
+        }
+        if (
+          args.entryEncoding !== undefined ||
+          args.associationStatus !== undefined
+        ) {
+          throw new QueryError(
+            "QUERY_INVALID_TEXT",
+            "BUSES 视图不能使用 BUSENTRY 编码或归属状态筛选。"
+          );
+        }
+        return {
+          view,
+          page: index.listBuses({
+            pageId: args.pageId,
+            busId: args.busId,
+            netNameContains: args.netNameContains,
+            encoding: args.busEncoding,
+            limit: args.limit,
+            cursor: args.cursor
+          })
+        };
+      })
+  );
+
+  server.registerTool(
     "list_candidate_netlist_tuples",
     {
       title: "分页列出规范化候选网表元组",
@@ -1894,7 +1999,7 @@ export function createEdaMcpServer(
     {
       title: "获取对象来源证据",
       description:
-        "返回组件、符号引脚、符号文字、原理图表格、原理图图形、导线、原理图注释、Variant 或元件组的原始 V3 日志来源位置；重复局部 ID 会显式返回歧义。",
+        "返回组件、符号引脚、符号文字、原理图表格、原理图图形、导线、BUS/BUSENTRY、原理图注释、Variant 或元件组的原始 V3 日志来源位置；重复局部 ID 会显式返回歧义。",
       inputSchema: {
         objectType: z.enum([
           "component",
@@ -1905,7 +2010,9 @@ export function createEdaMcpServer(
           "schematicAnnotation",
           "schematicGraphicPrimitive",
           "schematicTable",
-          "symbolText"
+          "symbolText",
+          "bus",
+          "busEntry"
         ]),
         objectId: z.string().min(1).max(QUERY_LIMITS.maxTextLength),
         documentId: z

@@ -337,6 +337,14 @@ test("将原理图、符号、引脚、器件和显式导线编译为可追溯 E
     wires: 1,
     wiresWithExplicitNet: 1,
     wireSegments: 1,
+    buses: 0,
+    busesWithExplicitNet: 0,
+    busesWithEmptyEntrySet: 0,
+    busSegments: 0,
+    busEntries: 0,
+    busEntriesEmbedded: 0,
+    busEntriesSeparate: 0,
+    busEntriesUnbound: 0,
     pinInstances: 1,
     pinInstancesWithUniqueExplicitNetCandidate: 0,
     pinInstancesWithConflictingExplicitNetCandidates: 0,
@@ -821,6 +829,185 @@ test("兼容官方 WIRE.dots 表示并保留每段来源", () => {
   assert.equal(
     ir.wires[0]?.segments.every(
       (segment) => segment.provenance.recordId === "wire-dots"
+    ),
+    true
+  );
+});
+
+test("同时建模官方独立 BUSENTRY 与当前导出的内嵌 busEntry", () => {
+  const reducer = new V3Reducer(LIMITS);
+  const page = enter(reducer, "page-bus", "SCH_PAGE", 1);
+  accept(reducer, page, 2, "META", undefined, { title: "Bus" });
+  accept(reducer, page, 3, "BUS", "bus-observed", {
+    groupId: "",
+    locked: false,
+    zIndex: 1,
+    busEntry: {
+      "entry-observed-b": {
+        order: 1,
+        pointX: 20,
+        pointY: 30,
+        rotation: 90,
+        futureField: "preserved"
+      },
+      "entry-observed-a": {
+        order: 0,
+        pointX: 10,
+        pointY: 30,
+        rotation: 90
+      }
+    }
+  });
+  attribute(
+    reducer,
+    page,
+    4,
+    "net-observed",
+    "bus-observed",
+    "NET",
+    "DATA[7:0]"
+  );
+  accept(reducer, page, 5, "BUS", "bus-official", {
+    groupId: "",
+    locked: false,
+    zIndex: 2,
+    dots: [[0, 0, 0, 20, 20, 20]]
+  });
+  attribute(
+    reducer,
+    page,
+    6,
+    "net-official",
+    "bus-official",
+    "NET",
+    "CTRL[1:0]"
+  );
+  accept(reducer, page, 7, "BUSENTRY", "entry-official-bound", {
+    parentId: "bus-official",
+    busGroupId: 0,
+    order: 0,
+    pointX: 0,
+    pointY: 10,
+    rotation: 180
+  });
+  accept(reducer, page, 8, "BUSENTRY", "entry-official-unbound", {
+    busGroupId: 1,
+    order: 1,
+    pointX: 0,
+    pointY: 20,
+    rotation: 180
+  });
+
+  const ir = compileV3ToEdaIr(reducer, ARCHIVE_SHA);
+
+  assert.equal(ir.summary.buses, 2);
+  assert.equal(ir.summary.busesWithExplicitNet, 2);
+  assert.equal(ir.summary.busSegments, 2);
+  assert.equal(ir.summary.busEntries, 4);
+  assert.equal(ir.summary.busEntriesEmbedded, 2);
+  assert.equal(ir.summary.busEntriesSeparate, 2);
+  assert.equal(ir.summary.busEntriesUnbound, 1);
+  assert.equal(ir.unboundAttributes.length, 0);
+  const observed = ir.buses.find((bus) => bus.id === "bus-observed");
+  assert.equal(observed?.encoding, "OBSERVED_EMBEDDED_BUSENTRY_MAP");
+  assert.equal(observed?.explicitNetName, "DATA[7:0]");
+  assert.equal(observed?.memberExpansion, "NOT_PERFORMED");
+  assert.deepEqual(observed?.entryIds, [
+    "entry-observed-a",
+    "entry-observed-b"
+  ]);
+  assert.equal(
+    ir.busEntries.find((entry) => entry.id === "entry-observed-b")
+      ?.extensions.easyeda.futureField,
+    "preserved"
+  );
+  const official = ir.buses.find((bus) => bus.id === "bus-official");
+  assert.equal(
+    official?.encoding,
+    "OFFICIAL_DOTS_WITH_SEPARATE_BUSENTRY_RECORDS"
+  );
+  assert.equal(official?.segments.length, 2);
+  assert.deepEqual(official?.entryIds, ["entry-official-bound"]);
+  assert.equal(
+    ir.busEntries.find((entry) => entry.id === "entry-official-unbound")
+      ?.associationStatus,
+    "SEPARATE_RECORD_WITHOUT_EXPLICIT_BUS_ID"
+  );
+});
+
+test("空 BUS 成员表可见，损坏入口和重复 order 使用稳定诊断", () => {
+  const reducer = new V3Reducer(LIMITS);
+  const page = enter(reducer, "page-bus-invalid", "SCH_PAGE", 1);
+  accept(reducer, page, 2, "META", undefined, { title: "Bus invalid" });
+  accept(reducer, page, 3, "BUS", "bus-empty", {
+    busEntry: {}
+  });
+  attribute(reducer, page, 4, "net-empty", "bus-empty", "NET", "EMPTY[]");
+  accept(reducer, page, 5, "BUS", "bus-partial", {
+    busEntry: {
+      "entry-a": {
+        order: 0,
+        pointX: 1,
+        pointY: 2,
+        rotation: 0
+      },
+      "entry-b": {
+        order: 0,
+        pointX: 3,
+        pointY: 4,
+        rotation: 0
+      },
+      "entry-invalid": {
+        order: 2,
+        pointX: 5,
+        rotation: 0
+      }
+    }
+  });
+  attribute(
+    reducer,
+    page,
+    6,
+    "net-partial",
+    "bus-partial",
+    "NET",
+    "PARTIAL[1:0]"
+  );
+  accept(reducer, page, 7, "BUS", "bus-invalid", {
+    busEntry: []
+  });
+  accept(reducer, page, 8, "BUSENTRY", "entry-invalid-separate", {
+    order: 0,
+    pointX: 0,
+    pointY: 0,
+    rotation: 0
+  });
+
+  const ir = compileV3ToEdaIr(reducer, ARCHIVE_SHA);
+
+  assert.equal(ir.summary.buses, 2);
+  assert.equal(ir.summary.busesWithEmptyEntrySet, 1);
+  assert.equal(ir.summary.busEntries, 2);
+  assert.equal(ir.summary.unmodeledRecords, 2);
+  assert.equal(
+    ir.diagnostics.some(
+      (diagnostic) =>
+        diagnostic.code === "IR_INVALID_EMBEDDED_BUS_ENTRY" &&
+        diagnostic.count === 1
+    ),
+    true
+  );
+  assert.equal(
+    ir.diagnostics.some(
+      (diagnostic) =>
+        diagnostic.code === "IR_BUS_ENTRY_ORDER_DUPLICATE" &&
+        diagnostic.count === 1
+    ),
+    true
+  );
+  assert.equal(
+    ir.diagnostics.some(
+      (diagnostic) => diagnostic.code === "IR_INVALID_SEPARATE_BUS_ENTRY"
     ),
     true
   );

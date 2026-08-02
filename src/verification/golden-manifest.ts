@@ -106,6 +106,14 @@ const SUMMARY_KEYS = [
   "wires",
   "wiresWithExplicitNet",
   "wireSegments",
+  "buses",
+  "busesWithExplicitNet",
+  "busesWithEmptyEntrySet",
+  "busSegments",
+  "busEntries",
+  "busEntriesEmbedded",
+  "busEntriesSeparate",
+  "busEntriesUnbound",
   "pinInstances",
   "pinInstancesWithUniqueExplicitNetCandidate",
   "pinInstancesWithConflictingExplicitNetCandidates",
@@ -358,6 +366,15 @@ function parseSummary(value: unknown): EdaIrSummary {
     parsed.componentsWithFootprint
   ) {
     failInvalid("expected.summary 组件 Footprint 有效绑定来源总数不守恒");
+  }
+  if (
+    parsed.busesWithExplicitNet > parsed.buses ||
+    parsed.busesWithEmptyEntrySet > parsed.buses ||
+    parsed.busEntriesEmbedded + parsed.busEntriesSeparate !==
+      parsed.busEntries ||
+    parsed.busEntriesUnbound > parsed.busEntriesSeparate
+  ) {
+    failInvalid("expected.summary BUS 与 BUSENTRY 分类计数不守恒");
   }
   const endpointTotal = ENDPOINT_KINDS.reduce(
     (total, kind) => total + parsed.pinInstancesByEndpointKind[kind],

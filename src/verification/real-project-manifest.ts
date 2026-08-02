@@ -4,7 +4,7 @@ const SHA256_PATTERN = /^[a-f0-9]{64}$/;
 const SAMPLE_ID_PATTERN = /^real-[0-9]{2}$/;
 const BASELINE_ID_PATTERN = /^v[0-9]+\.[0-9]+-m[0-9]+(?:-[a-z0-9-]+)?$/;
 
-export const REAL_PROJECT_MANIFEST_SCHEMA_VERSION = "1.0.0" as const;
+export const REAL_PROJECT_MANIFEST_SCHEMA_VERSION = "1.1.0" as const;
 export const REAL_PROJECT_MANIFEST_LIMITS = {
   maxSamples: 32,
   maxPathLength: 4_096,
@@ -46,6 +46,20 @@ export interface RealProjectAssemblyBaseline {
   readonly requiredDnpDesignators: readonly string[];
 }
 
+export interface RealProjectBusBaseline {
+  readonly buses: number;
+  readonly busesWithExplicitNet: number;
+  readonly busesObservedEmbedded: number;
+  readonly busesOfficialSeparate: number;
+  readonly busesHybrid: number;
+  readonly busesWithEmptyEntrySet: number;
+  readonly busSegments: number;
+  readonly busEntries: number;
+  readonly busEntriesEmbedded: number;
+  readonly busEntriesSeparate: number;
+  readonly busEntriesUnbound: number;
+}
+
 export interface RealProjectSampleManifest {
   readonly sampleId: string;
   readonly projectPath: string;
@@ -59,6 +73,7 @@ export interface RealProjectSampleManifest {
   readonly comparisonBaseline: RealProjectComparisonBaseline;
   readonly hierarchyBaseline?: RealProjectHierarchyBaseline;
   readonly assemblyBaseline?: RealProjectAssemblyBaseline;
+  readonly busBaseline?: RealProjectBusBaseline;
 }
 
 export interface RealProjectManifest {
@@ -301,6 +316,41 @@ function assembly(
   };
 }
 
+function bus(value: unknown, field: string): RealProjectBusBaseline {
+  const record = object(value, field);
+  const keys = [
+    "buses",
+    "busesWithExplicitNet",
+    "busesObservedEmbedded",
+    "busesOfficialSeparate",
+    "busesHybrid",
+    "busesWithEmptyEntrySet",
+    "busSegments",
+    "busEntries",
+    "busEntriesEmbedded",
+    "busEntriesSeparate",
+    "busEntriesUnbound"
+  ] as const;
+  exactKeys(record, keys, [], field);
+  const result = Object.fromEntries(
+    keys.map((key) => [key, count(record[key], `${field}.${key}`)])
+  ) as unknown as RealProjectBusBaseline;
+  if (
+    result.busesWithExplicitNet > result.buses ||
+    result.busesWithEmptyEntrySet > result.buses ||
+    result.busesObservedEmbedded +
+        result.busesOfficialSeparate +
+        result.busesHybrid !==
+      result.buses ||
+    result.busEntriesEmbedded + result.busEntriesSeparate !==
+      result.busEntries ||
+    result.busEntriesUnbound > result.busEntriesSeparate
+  ) {
+    invalid(`${field} 的 BUS/BUSENTRY 分类计数不守恒`);
+  }
+  return result;
+}
+
 function sample(value: unknown, index: number): RealProjectSampleManifest {
   const field = `samples[${index}]`;
   const record = object(value, field);
@@ -315,7 +365,7 @@ function sample(value: unknown, index: number): RealProjectSampleManifest {
       "expectedDiagnostics",
       "comparisonBaseline"
     ],
-    ["hierarchyBaseline", "assemblyBaseline"],
+    ["hierarchyBaseline", "assemblyBaseline", "busBaseline"],
     field
   );
   const sampleId = string(record.sampleId, `${field}.sampleId`);
@@ -364,6 +414,11 @@ function sample(value: unknown, index: number): RealProjectSampleManifest {
             record.assemblyBaseline,
             `${field}.assemblyBaseline`
           )
+        }),
+    ...(record.busBaseline === undefined
+      ? {}
+      : {
+          busBaseline: bus(record.busBaseline, `${field}.busBaseline`)
         })
   };
 }
@@ -410,9 +465,11 @@ export function parseRealProjectManifest(value: unknown): RealProjectManifest {
   if (
     acceptance === undefined ||
     acceptance.hierarchyBaseline === undefined ||
-    acceptance.hierarchyBaseline.instanceContextsResolved === 0
+    acceptance.hierarchyBaseline.instanceContextsResolved === 0 ||
+    acceptance.busBaseline === undefined ||
+    acceptance.busBaseline.buses === 0
   ) {
-    invalid("packageAcceptanceSampleId 必须引用含已解析层级实例的样本");
+    invalid("packageAcceptanceSampleId 必须引用含已解析层级实例和显式 BUS 的样本");
   }
   return {
     schemaVersion: REAL_PROJECT_MANIFEST_SCHEMA_VERSION,

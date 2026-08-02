@@ -10,6 +10,7 @@
 - 将 `INSTANCE_ATTR` 精确应用到有效组件实例或引脚实例，未解析目标保留稳定原因；
 - `list_design_hierarchy`、`list_components`、`get_component` 和 `get_component_pins` 支持层级实例上下文查询；
 - 新增仓库外私有清单驱动的 `verify:real-projects`，冻结真实工程输入、网表差异、诊断和安装态 MCP 调用门禁。
+- 新增 `IrBus`、`IrBusEntry` 和 `list_buses`，兼容官方独立 `BUSENTRY` 与当前导出的内嵌 `busEntry`，保留显式顺序、坐标、来源和未绑定状态。
 
 ### Changed
 
@@ -17,7 +18,7 @@
 
 ### Planned
 
-- 完善显式总线、`Add into BOM=no` 的 DNP、引脚完整性和 P2 资源语义；
+- 完善 `Add into BOM=no` 的 DNP、引脚完整性和 P2 资源语义；
 - 在不提交私有工程的前提下继续扩大格式回归覆盖。
 
 ## [0.1.0] - 2026-07-31

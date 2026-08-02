@@ -4,6 +4,10 @@ import type {
   EdaIr,
   IrAttribute,
   IrBoard,
+  IrBus,
+  IrBusEncoding,
+  IrBusEntry,
+  IrBusEntryEncoding,
   IrComponent,
   IrComponentGroup,
   IrComponentLibraryBinding,
@@ -367,6 +371,34 @@ export interface ExplicitNetSummary {
   readonly connectionStatus: "EXPLICIT_WIRE_LABEL_ONLY";
 }
 
+export interface BusSummary {
+  readonly id: string;
+  readonly pageId: string;
+  readonly encoding: IrBusEncoding;
+  readonly explicitNetName?: string;
+  readonly segmentCount: number;
+  readonly entryCount: number;
+  readonly memberExpansion: "NOT_PERFORMED";
+  readonly evidenceClass: "EXPLICIT_PROJECT_RECORD";
+  readonly truthStatus: "NOT_VERIFIED";
+  readonly provenance: IrRecordProvenance;
+}
+
+export interface BusEntrySummary {
+  readonly id: string;
+  readonly pageId: string;
+  readonly busId?: string;
+  readonly encoding: IrBusEntryEncoding;
+  readonly associationStatus: IrBusEntry["associationStatus"];
+  readonly order: number;
+  readonly busGroupId?: number;
+  readonly point: IrBusEntry["point"];
+  readonly rotation: number;
+  readonly evidenceClass: "EXPLICIT_PROJECT_RECORD";
+  readonly truthStatus: "NOT_VERIFIED";
+  readonly provenance: IrRecordProvenance;
+}
+
 export type DesignHierarchyNodeKind =
   | "PROJECT_CONFIGURATION"
   | "BOARD"
@@ -474,7 +506,9 @@ export interface Evidence {
     | "schematicAnnotation"
     | "schematicGraphicPrimitive"
     | "schematicTable"
-    | "symbolText";
+    | "symbolText"
+    | "bus"
+    | "busEntry";
   readonly objectId: string;
   readonly provenance: IrRecordProvenance;
 }
@@ -585,6 +619,24 @@ interface PartMasterDetailOptions {
 
 interface ExplicitNetListOptions {
   readonly nameContains?: string | undefined;
+  readonly limit?: number | undefined;
+  readonly cursor?: string | undefined;
+}
+
+interface BusListOptions {
+  readonly pageId?: string | undefined;
+  readonly busId?: string | undefined;
+  readonly netNameContains?: string | undefined;
+  readonly encoding?: IrBusEncoding | undefined;
+  readonly limit?: number | undefined;
+  readonly cursor?: string | undefined;
+}
+
+interface BusEntryListOptions {
+  readonly pageId?: string | undefined;
+  readonly busId?: string | undefined;
+  readonly encoding?: IrBusEntryEncoding | undefined;
+  readonly associationStatus?: IrBusEntry["associationStatus"] | undefined;
   readonly limit?: number | undefined;
   readonly cursor?: string | undefined;
 }
@@ -1089,6 +1141,42 @@ function summarizeInstanceOverride(
   };
 }
 
+function summarizeBus(bus: IrBus): BusSummary {
+  return {
+    id: bus.id,
+    pageId: bus.pageId,
+    encoding: bus.encoding,
+    ...(bus.explicitNetName === undefined
+      ? {}
+      : { explicitNetName: bus.explicitNetName }),
+    segmentCount: bus.segments.length,
+    entryCount: bus.entryIds.length,
+    memberExpansion: bus.memberExpansion,
+    evidenceClass: bus.evidenceClass,
+    truthStatus: bus.truthStatus,
+    provenance: bus.provenance
+  };
+}
+
+function summarizeBusEntry(entry: IrBusEntry): BusEntrySummary {
+  return {
+    id: entry.id,
+    pageId: entry.pageId,
+    ...(entry.busId === undefined ? {} : { busId: entry.busId }),
+    encoding: entry.encoding,
+    associationStatus: entry.associationStatus,
+    order: entry.order,
+    ...(entry.busGroupId === undefined
+      ? {}
+      : { busGroupId: entry.busGroupId }),
+    point: entry.point,
+    rotation: entry.rotation,
+    evidenceClass: entry.evidenceClass,
+    truthStatus: entry.truthStatus,
+    provenance: entry.provenance
+  };
+}
+
 function projectConfigurationNode(
   configuration: IrProjectConfiguration
 ): DesignHierarchyNode {
@@ -1287,6 +1375,8 @@ export class EdaIrQueryIndex {
   private readonly componentsByDesignator: ReadonlyMap<string, readonly IrComponent[]>;
   private readonly pinsByComponent: ReadonlyMap<string, readonly IrPinInstance[]>;
   private readonly explicitNets: readonly ExplicitNetSummary[];
+  private readonly buses: readonly IrBus[];
+  private readonly busEntries: readonly IrBusEntry[];
   private readonly candidateNetlist: CandidateTupleCompilation;
   private readonly networkEndpointCandidates: readonly IrNetworkEndpointCandidate[];
   private readonly shortRelations: readonly IrShortRelationCandidate[];
@@ -1418,6 +1508,19 @@ export class EdaIrQueryIndex {
     );
     this.pinsByComponent = this.groupPins();
     this.explicitNets = this.buildExplicitNets();
+    this.buses = [...ir.buses].sort(
+      (left, right) =>
+        compareText(left.pageId, right.pageId) ||
+        compareText(left.id, right.id)
+    );
+    this.busEntries = [...ir.busEntries].sort(
+      (left, right) =>
+        compareText(left.pageId, right.pageId) ||
+        compareText(left.busId ?? "", right.busId ?? "") ||
+        left.order - right.order ||
+        compareText(left.id, right.id) ||
+        compareText(left.encoding, right.encoding)
+    );
     this.candidateNetlist = compileCandidateNetlistTuples(ir.pinInstances);
     this.networkEndpointCandidates = [...ir.networkEndpointCandidates].sort(
       (left, right) =>
@@ -2093,6 +2196,63 @@ export class EdaIrQueryIndex {
     return paginate(filtered, options.limit, options.cursor, scope);
   }
 
+  public listBuses(options: BusListOptions = {}): Page<BusSummary> {
+    const pageId = validateText(options.pageId, "pageId");
+    const busId = validateText(options.busId, "busId");
+    const netNameContains = validateText(
+      options.netNameContains,
+      "netNameContains"
+    );
+    const needle = netNameContains?.toLocaleLowerCase("en-US");
+    const filtered = this.buses
+      .filter(
+        (bus) =>
+          (pageId === undefined || bus.pageId === pageId) &&
+          (busId === undefined || bus.id === busId) &&
+          (options.encoding === undefined ||
+            bus.encoding === options.encoding) &&
+          (needle === undefined ||
+            bus.explicitNetName
+              ?.toLocaleLowerCase("en-US")
+              .includes(needle) === true)
+      )
+      .map(summarizeBus);
+    const scope = scopeHash("buses", {
+      project: this.ir.irSha256,
+      pageId: pageId ?? "",
+      busId: busId ?? "",
+      netNameContains: needle ?? "",
+      encoding: options.encoding ?? ""
+    });
+    return paginate(filtered, options.limit, options.cursor, scope);
+  }
+
+  public listBusEntries(
+    options: BusEntryListOptions = {}
+  ): Page<BusEntrySummary> {
+    const pageId = validateText(options.pageId, "pageId");
+    const busId = validateText(options.busId, "busId");
+    const filtered = this.busEntries
+      .filter(
+        (entry) =>
+          (pageId === undefined || entry.pageId === pageId) &&
+          (busId === undefined || entry.busId === busId) &&
+          (options.encoding === undefined ||
+            entry.encoding === options.encoding) &&
+          (options.associationStatus === undefined ||
+            entry.associationStatus === options.associationStatus)
+      )
+      .map(summarizeBusEntry);
+    const scope = scopeHash("bus-entries", {
+      project: this.ir.irSha256,
+      pageId: pageId ?? "",
+      busId: busId ?? "",
+      encoding: options.encoding ?? "",
+      associationStatus: options.associationStatus ?? ""
+    });
+    return paginate(filtered, options.limit, options.cursor, scope);
+  }
+
   public getCandidateNetlistSummary(): CandidateTupleCompilation["summary"] {
     return this.candidateNetlist.summary;
   }
@@ -2407,6 +2567,20 @@ export class EdaIrQueryIndex {
         objectType: "wire",
         objectId: wire.id,
         provenance: wire.provenance
+      });
+    }
+    for (const bus of this.buses) {
+      add({
+        objectType: "bus",
+        objectId: bus.id,
+        provenance: bus.provenance
+      });
+    }
+    for (const entry of this.busEntries) {
+      add({
+        objectType: "busEntry",
+        objectId: entry.id,
+        provenance: entry.provenance
       });
     }
     for (const group of evidence.values()) {

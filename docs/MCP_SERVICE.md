@@ -10,7 +10,7 @@ SchemCP `0.1.0` 提供只读 stdio MCP 服务。服务可无工程启动，只�
 npx -y @yuanzihao/schemcp
 ```
 
-无参数和显式 `mcp` 子命令等价。stdout 仅承载 MCP 协议消息，日志与诊断写入 stderr。公共契约固定为 48 个原理图工具、0 个 PCB 工具，不存在 `--profile` 或内部全量档。
+无参数和显式 `mcp` 子命令等价。stdout 仅承载 MCP 协议消息，日志与诊断写入 stderr。公共契约固定为 49 个原理图工具、0 个 PCB 工具，不存在 `--profile` 或内部全量档。
 
 ## 工具分组
 
@@ -20,7 +20,7 @@ npx -y @yuanzihao/schemcp
 | 摘要与层级 | `get_project_summary`、`list_design_hierarchy`、`list_instance_contexts`、`get_instance_context` |
 | 器件与引脚 | `list_components`、`get_component`、`get_component_pins`、`get_component_pin_connectivity`、`list_direct_component_connections`、`list_unresolved_components` |
 | 原理图内容 | `list_schematic_annotations`、`list_schematic_graphic_primitives`、`list_schematic_tables`、`get_schematic_table`、`list_symbol_texts` |
-| 网络与候选 | `list_explicit_nets`、`list_candidate_netlist_tuples`、`list_candidate_netlist_exclusions`、`list_network_endpoint_candidates`、`list_short_relation_candidates` |
+| 网络与候选 | `list_explicit_nets`、`list_buses`、`list_candidate_netlist_tuples`、`list_candidate_netlist_exclusions`、`list_network_endpoint_candidates`、`list_short_relation_candidates` |
 | `.enet` | `attach_schematic_netlist`、`detach_schematic_netlist`、`get_netlist_comparison_summary`、`list_netlist_comparison_tuples`、`list_bound_electrical_nets`、`get_net` |
 | 器件资料 | `list_part_masters`、`get_part_master`、`list_datasheet_references`、`get_datasheet_section` |
 | Variant 与差异 | `get_variant`、`list_variant_overrides`、`diff_project_versions` |

@@ -31,6 +31,7 @@ License: Apache-2.0
 - **Attachment-first startup**: the MCP server starts without a project and opens a file only after the user explicitly supplies it.
 - **Multi-project workspace**: one session can hold up to four projects and user-declared assemblies.
 - **Component context**: resolve both supported INSTANCE path encodings and query base components or effective designators, attributes, pin overrides, and network evidence in one hierarchy occurrence.
+- **Explicit bus facts**: support official standalone `BUSENTRY` records and the embedded `busEntry` form seen in current exports while preserving `NET`, explicit order, and coordinates without expanding bus names.
 - **Optional `.enet` evidence**: bind a netlist to one project when exact pin-to-net endpoint comparison is needed.
 - **Explicit truth boundaries**: project facts, part facts, and engineering inferences remain distinguishable.
 - **Read-only and bounded**: tools use pagination, stable error codes, and input limits; SchemCP does not edit schematics or generate firmware.
@@ -191,14 +192,15 @@ schemcp mcp-config --client claude-code
 3. Pass the exact absolute path supplied by the client to `open_schematic_project`.
 4. Call `list_schematic_projects` and retain the returned `projectHandle`.
 5. Call `list_design_hierarchy` and `list_instance_contexts` first. Pass the returned `instanceContextId` to `list_components`, `get_component`, or `get_component_pins` when effective hierarchy-occurrence properties are required.
-6. Only when exact pin-to-net verification is required, call `attach_schematic_netlist` for that project.
+6. If the project contains buses, use the `BUSES` view of `list_buses` first, then page through its `ENTRIES` view in explicit `order`. Do not expand names such as `DATA[7:0]` yourself.
+7. Only when exact pin-to-net verification is required, call `attach_schematic_netlist` for that project.
 
 Suggested first prompt:
 
 ```text
 Use schemcp to open the .epro2 attachment I provided. Call
-list_schematic_projects and list_design_hierarchy first, then query components
-and pins page by page. If no .enet is attached, clearly separate exact project
+list_schematic_projects and list_design_hierarchy first, then query components,
+pins, and explicit buses page by page. If no .enet is attached, clearly separate exact project
 facts from geometric network candidates.
 ```
 
@@ -264,7 +266,7 @@ schemcp
 ## Documentation and security
 
 - [MCP service reference](docs/MCP_SERVICE.md)
-- [48 MCP tools and JSON Schemas](docs/MCP_TOOLS.md)
+- [49 MCP tools and JSON Schemas](docs/MCP_TOOLS.md)
 - [User guide](docs/USER_GUIDE.md)
 - [Contributing](CONTRIBUTING.md)
 - [Security policy](SECURITY.md)

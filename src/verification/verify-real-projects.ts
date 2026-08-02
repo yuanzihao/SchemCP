@@ -23,6 +23,7 @@ import {
   parseRealProjectManifest,
   REAL_PROJECT_MANIFEST_LIMITS,
   type RealProjectAssemblyBaseline,
+  type RealProjectBusBaseline,
   type RealProjectComparisonBaseline,
   type RealProjectHierarchyBaseline,
   type RealProjectSampleManifest
@@ -61,6 +62,7 @@ interface SampleReceipt {
     readonly explicitDnp: number;
     readonly requiredDnpVerified: number;
   };
+  readonly bus: RealProjectBusBaseline;
   readonly comparison: {
     readonly status: string;
     readonly candidateTupleCount: number;
@@ -173,6 +175,52 @@ function assemblyEvidence(
   };
 }
 
+function busEvidence(
+  ir: EdaIr,
+  baseline: RealProjectBusBaseline | undefined,
+  sampleId: string
+): RealProjectBusBaseline {
+  const actual: RealProjectBusBaseline = {
+    buses: ir.buses.length,
+    busesWithExplicitNet: ir.buses.filter(
+      (bus) => bus.explicitNetName !== undefined
+    ).length,
+    busesObservedEmbedded: ir.buses.filter(
+      (bus) => bus.encoding === "OBSERVED_EMBEDDED_BUSENTRY_MAP"
+    ).length,
+    busesOfficialSeparate: ir.buses.filter(
+      (bus) =>
+        bus.encoding === "OFFICIAL_DOTS_WITH_SEPARATE_BUSENTRY_RECORDS"
+    ).length,
+    busesHybrid: ir.buses.filter(
+      (bus) => bus.encoding === "HYBRID_DOTS_WITH_EMBEDDED_BUSENTRY_MAP"
+    ).length,
+    busesWithEmptyEntrySet: ir.buses.filter(
+      (bus) => bus.entryIds.length === 0
+    ).length,
+    busSegments: ir.buses.reduce(
+      (total, bus) => total + bus.segments.length,
+      0
+    ),
+    busEntries: ir.busEntries.length,
+    busEntriesEmbedded: ir.busEntries.filter(
+      (entry) => entry.encoding === "OBSERVED_EMBEDDED_BUSENTRY_MAP_ITEM"
+    ).length,
+    busEntriesSeparate: ir.busEntries.filter(
+      (entry) => entry.encoding === "OFFICIAL_SEPARATE_BUSENTRY_RECORD"
+    ).length,
+    busEntriesUnbound: ir.busEntries.filter(
+      (entry) => entry.busId === undefined
+    ).length
+  };
+  if (baseline !== undefined) {
+    for (const key of Object.keys(baseline) as (keyof RealProjectBusBaseline)[]) {
+      equalCount(actual[key], baseline[key], `${sampleId}.bus.${key}`);
+    }
+  }
+  return actual;
+}
+
 function verifyComparison(
   actual: SampleReceipt["comparison"],
   baseline: RealProjectComparisonBaseline,
@@ -283,6 +331,7 @@ async function verifySample(
       sample.assemblyBaseline,
       sample.sampleId
     ),
+    bus: busEvidence(firstIr, sample.busBaseline, sample.sampleId),
     comparison
   };
 }
@@ -355,6 +404,7 @@ function parsePackageReceipt(stdout: string): {
   readonly tarballSha256: string;
   readonly packageBytes: number;
   readonly realHierarchyQuery: string;
+  readonly realBusQuery: string;
 } {
   const lines = stdout.trim().split(/\r?\n/u);
   const last = lines[lines.length - 1];
@@ -373,14 +423,16 @@ function parsePackageReceipt(stdout: string): {
     typeof record.tarballSha256 !== "string" ||
     !SHA256_PATTERN.test(record.tarballSha256) ||
     !Number.isSafeInteger(record.packageBytes) ||
-    record.realHierarchyQuery !== "VERIFIED"
+    record.realHierarchyQuery !== "VERIFIED" ||
+    record.realBusQuery !== "VERIFIED"
   ) {
     fail("REAL_PROJECT_PACKAGE_GATE_FAILED", "候选包真实层级调用未通过");
   }
   return {
     tarballSha256: record.tarballSha256,
     packageBytes: record.packageBytes as number,
-    realHierarchyQuery: record.realHierarchyQuery
+    realHierarchyQuery: record.realHierarchyQuery,
+    realBusQuery: record.realBusQuery
   };
 }
 
@@ -506,7 +558,7 @@ async function main(): Promise<void> {
       `${path.basename(manifestPath, ".json")}.receipt.json`
     );
   const receiptSha256 = await writeReceipt(receiptPath, {
-    schemaVersion: "1.0.0",
+    schemaVersion: "1.1.0",
     gate: "REAL_PROJECTS_VERIFIED",
     baselineId: manifest.baselineId,
     sourceSnapshotSha256,
@@ -531,6 +583,14 @@ async function main(): Promise<void> {
       ),
       explicitDnpEvidence: sampleReceipts.reduce(
         (total, item) => total + item.assembly.explicitDnp,
+        0
+      ),
+      explicitBuses: sampleReceipts.reduce(
+        (total, item) => total + item.bus.buses,
+        0
+      ),
+      explicitBusEntries: sampleReceipts.reduce(
+        (total, item) => total + item.bus.busEntries,
         0
       ),
       privatePathsDisclosed: false

@@ -6,8 +6,8 @@
 - 服务：`schemcp`
 - 包：`@yuanzihao/schemcp@0.1.0`
 - 运输：`stdio`
-- 工具数：`48`
-- JSON 快照 SHA-256：`f371b6e2b0e0eac0e2a1ed46495d38cd0ce233e113860fab5218fd357f09db1a`
+- 工具数：`49`
+- JSON 快照 SHA-256：`d5b6a5c0b71f657f1335fc0f9345d3d3e0b8b9322d39e91eeeea581d0c6de4ad`
 
 每个工具的结果至少包含 `ok:boolean` 与平台安全能力状态；工具专用字段作为受版本化公共契约约束的扩展属性返回。失败时 `ok=false`，并返回稳定的 `error.code`。
 
@@ -2649,7 +2649,113 @@
 }
 ```
 
-## 42. `list_candidate_netlist_tuples`
+## 42. `list_buses`
+
+**分页列出显式 BUS 或 BUSENTRY**
+
+分页返回显式 BUS 本体或 BUSENTRY 入口。兼容官方独立 BUSENTRY 与当前导出的内嵌 busEntry；保留 NET、order、坐标、旋转、编码和绑定状态，不展开 DATA[7:0] 等名称，也不靠几何猜测独立入口归属。
+
+输入 Schema：
+
+```json
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "properties": {
+    "associationStatus": {
+      "description": "仅 ENTRIES 视图：入口归属状态筛选",
+      "enum": [
+        "EMBEDDED_IN_BUS_RECORD",
+        "EXPLICIT_PARENT_ID",
+        "SEPARATE_RECORD_WITHOUT_EXPLICIT_BUS_ID",
+        "EXPLICIT_PARENT_ID_NOT_FOUND"
+      ],
+      "type": "string"
+    },
+    "busEncoding": {
+      "description": "仅 BUSES 视图：显式 BUS 编码筛选",
+      "enum": [
+        "OFFICIAL_DOTS_WITH_SEPARATE_BUSENTRY_RECORDS",
+        "OBSERVED_EMBEDDED_BUSENTRY_MAP",
+        "HYBRID_DOTS_WITH_EMBEDDED_BUSENTRY_MAP"
+      ],
+      "type": "string"
+    },
+    "busId": {
+      "description": "可选精确 BUS ID；ENTRIES 视图只返回已绑定该 BUS 的入口",
+      "maxLength": 128,
+      "minLength": 1,
+      "type": "string"
+    },
+    "cursor": {
+      "description": "上一页返回的不透明 nextCursor；改变筛选条件后不可复用",
+      "minLength": 1,
+      "type": "string"
+    },
+    "entryEncoding": {
+      "description": "仅 ENTRIES 视图：BUSENTRY 编码筛选",
+      "enum": [
+        "OFFICIAL_SEPARATE_BUSENTRY_RECORD",
+        "OBSERVED_EMBEDDED_BUSENTRY_MAP_ITEM"
+      ],
+      "type": "string"
+    },
+    "limit": {
+      "description": "每页数量，默认 20，最大 50",
+      "maximum": 50,
+      "minimum": 1,
+      "type": "integer"
+    },
+    "netNameContains": {
+      "description": "仅 BUSES 视图：不区分大小写的 NET 子串",
+      "maxLength": 128,
+      "minLength": 1,
+      "type": "string"
+    },
+    "pageId": {
+      "description": "可选精确原理图页 ID",
+      "maxLength": 128,
+      "minLength": 1,
+      "type": "string"
+    },
+    "projectHandle": {
+      "description": "可选工程句柄；省略时查询当前活动工程。句柄来自 open/list/get_active_schematic_project",
+      "maxLength": 96,
+      "minLength": 1,
+      "type": "string"
+    },
+    "view": {
+      "description": "返回 BUS 列表或 BUSENTRY 列表；默认 BUSES",
+      "enum": [
+        "BUSES",
+        "ENTRIES"
+      ],
+      "type": "string"
+    }
+  },
+  "type": "object"
+}
+```
+
+结果 Schema：
+
+```json
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": {},
+  "properties": {
+    "ok": {
+      "description": "工具调用是否成功",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "ok"
+  ],
+  "type": "object"
+}
+```
+
+## 43. `list_candidate_netlist_tuples`
 
 **分页列出规范化候选网表元组**
 
@@ -2726,7 +2832,7 @@
 }
 ```
 
-## 43. `list_candidate_netlist_exclusions`
+## 44. `list_candidate_netlist_exclusions`
 
 **分页列出候选网表排除项**
 
@@ -2804,7 +2910,7 @@
 }
 ```
 
-## 44. `list_network_endpoint_candidates`
+## 45. `list_network_endpoint_candidates`
 
 **分页列出网络端点声明候选**
 
@@ -2882,7 +2988,7 @@
 }
 ```
 
-## 45. `list_short_relation_candidates`
+## 46. `list_short_relation_candidates`
 
 **分页列出 Short Symbol 关系候选**
 
@@ -2951,7 +3057,7 @@
 }
 ```
 
-## 46. `diff_project_versions`
+## 47. `diff_project_versions`
 
 **分页比较当前工程与基线工程**
 
@@ -3043,7 +3149,7 @@
 }
 ```
 
-## 47. `get_diagnostics`
+## 48. `get_diagnostics`
 
 **分页获取编译诊断**
 
@@ -3103,11 +3209,11 @@
 }
 ```
 
-## 48. `get_evidence`
+## 49. `get_evidence`
 
 **获取对象来源证据**
 
-返回组件、符号引脚、符号文字、原理图表格、原理图图形、导线、原理图注释、Variant 或元件组的原始 V3 日志来源位置；重复局部 ID 会显式返回歧义。
+返回组件、符号引脚、符号文字、原理图表格、原理图图形、导线、BUS/BUSENTRY、原理图注释、Variant 或元件组的原始 V3 日志来源位置；重复局部 ID 会显式返回歧义。
 
 输入 Schema：
 
@@ -3136,7 +3242,9 @@
         "schematicAnnotation",
         "schematicGraphicPrimitive",
         "schematicTable",
-        "symbolText"
+        "symbolText",
+        "bus",
+        "busEntry"
       ],
       "type": "string"
     },

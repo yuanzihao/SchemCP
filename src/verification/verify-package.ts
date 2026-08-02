@@ -805,6 +805,45 @@ async function main(): Promise<void> {
           (detail.lookup as { readonly status: string }).status,
           "FOUND"
         );
+        const buses = structured(
+          await client.callTool({
+            name: "list_buses",
+            arguments: { view: "BUSES", limit: 50 }
+          })
+        );
+        const busPage = buses.page as {
+          readonly total: number;
+          readonly items: readonly {
+            readonly id: string;
+            readonly entryCount: number;
+          }[];
+        };
+        assert.ok(busPage.total > 0, "真实工程必须包含显式 BUS");
+        const busWithEntries = busPage.items.find(
+          (bus) => bus.entryCount > 0
+        );
+        assert.ok(busWithEntries, "真实工程必须包含带入口的显式 BUS");
+        const busEntries = structured(
+          await client.callTool({
+            name: "list_buses",
+            arguments: {
+              view: "ENTRIES",
+              busId: busWithEntries.id,
+              limit: 50
+            }
+          })
+        );
+        const entryPage = busEntries.page as {
+          readonly total: number;
+          readonly items: readonly { readonly order: number }[];
+        };
+        assert.equal(entryPage.total, busWithEntries.entryCount);
+        assert.deepEqual(
+          entryPage.items.map((entry) => entry.order),
+          [...entryPage.items]
+            .map((entry) => entry.order)
+            .sort((left, right) => left - right)
+        );
         const components = structured(
           await client.callTool({
             name: "list_components",
@@ -864,6 +903,8 @@ async function main(): Promise<void> {
         pcbToolCount: 0,
         projectQuery: projectArgument === undefined ? "SYNTHETIC_VERIFIED" : "VERIFIED",
         realHierarchyQuery:
+          projectArgument === undefined ? "NOT_REQUESTED" : "VERIFIED",
+        realBusQuery:
           projectArgument === undefined ? "NOT_REQUESTED" : "VERIFIED",
         syntheticNetlistBinding:
           projectArgument === undefined ? "VERIFIED" : "NOT_REQUESTED",

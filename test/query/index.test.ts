@@ -3,6 +3,8 @@ import test from "node:test";
 import type {
   EdaIr,
   IrAttribute,
+  IrBus,
+  IrBusEntry,
   IrComponent,
   IrComponentGroup,
   IrInstanceContext,
@@ -439,6 +441,8 @@ function fixture(): EdaIr {
     symbolPins,
     devices: [],
     wires,
+    buses: [],
+    busEntries: [],
     pinInstances: pinCompilation.pinInstances,
     shortRelations: [],
     networkEndpointCandidates: [],
@@ -529,6 +533,14 @@ function fixture(): EdaIr {
       wires: wires.length,
       wiresWithExplicitNet: wires.length,
       wireSegments: wires.length,
+      buses: 0,
+      busesWithExplicitNet: 0,
+      busesWithEmptyEntrySet: 0,
+      busSegments: 0,
+      busEntries: 0,
+      busEntriesEmbedded: 0,
+      busEntriesSeparate: 0,
+      busEntriesUnbound: 0,
       pinInstances: pinCompilation.summary.pinInstances,
       pinInstancesWithUniqueExplicitNetCandidate:
         pinCompilation.summary.uniqueExplicitNetCandidates,
@@ -940,6 +952,122 @@ function symbolTextFixture(): EdaIr {
       symbolTextsResolvedExact: 1,
       symbolTextsWithExplicitEmptyPart: 1,
       symbolTextsWithPartNotFound: 1
+    }
+  };
+}
+
+function busFixture(): EdaIr {
+  const base = fixture();
+  const buses: readonly IrBus[] = [
+    {
+      id: "bus-a",
+      pageId: "page-a",
+      encoding: "OBSERVED_EMBEDDED_BUSENTRY_MAP",
+      explicitNetName: "DATA[7:0]",
+      segments: [],
+      entryIds: ["entry-a", "entry-b"],
+      attributes: [],
+      memberExpansion: "NOT_PERFORMED",
+      evidenceClass: "EXPLICIT_PROJECT_RECORD",
+      truthStatus: "NOT_VERIFIED",
+      provenance: {
+        ...PROVENANCE,
+        recordType: "BUS",
+        recordId: "bus-a"
+      },
+      extensions: { easyeda: {} }
+    },
+    {
+      id: "bus-b",
+      pageId: "page-b",
+      encoding: "OFFICIAL_DOTS_WITH_SEPARATE_BUSENTRY_RECORDS",
+      explicitNetName: "CTRL[1:0]",
+      segments: [],
+      entryIds: [],
+      attributes: [],
+      memberExpansion: "NOT_PERFORMED",
+      evidenceClass: "EXPLICIT_PROJECT_RECORD",
+      truthStatus: "NOT_VERIFIED",
+      provenance: {
+        ...PROVENANCE,
+        documentId: "page-b",
+        recordType: "BUS",
+        recordId: "bus-b"
+      },
+      extensions: { easyeda: {} }
+    }
+  ];
+  const busEntries: readonly IrBusEntry[] = [
+    {
+      id: "entry-b",
+      pageId: "page-a",
+      busId: "bus-a",
+      encoding: "OBSERVED_EMBEDDED_BUSENTRY_MAP_ITEM",
+      associationStatus: "EMBEDDED_IN_BUS_RECORD",
+      order: 1,
+      point: { x: 20, y: 10 },
+      rotation: 0,
+      evidenceClass: "EXPLICIT_PROJECT_RECORD",
+      truthStatus: "NOT_VERIFIED",
+      provenance: {
+        ...PROVENANCE,
+        recordType: "BUS",
+        recordId: "bus-a"
+      },
+      extensions: { easyeda: {} }
+    },
+    {
+      id: "entry-a",
+      pageId: "page-a",
+      busId: "bus-a",
+      encoding: "OBSERVED_EMBEDDED_BUSENTRY_MAP_ITEM",
+      associationStatus: "EMBEDDED_IN_BUS_RECORD",
+      order: 0,
+      point: { x: 10, y: 10 },
+      rotation: 0,
+      evidenceClass: "EXPLICIT_PROJECT_RECORD",
+      truthStatus: "NOT_VERIFIED",
+      provenance: {
+        ...PROVENANCE,
+        recordType: "BUS",
+        recordId: "bus-a"
+      },
+      extensions: { easyeda: {} }
+    },
+    {
+      id: "entry-unbound",
+      pageId: "page-b",
+      encoding: "OFFICIAL_SEPARATE_BUSENTRY_RECORD",
+      associationStatus: "SEPARATE_RECORD_WITHOUT_EXPLICIT_BUS_ID",
+      order: 0,
+      busGroupId: 3,
+      point: { x: 0, y: 0 },
+      rotation: 180,
+      evidenceClass: "EXPLICIT_PROJECT_RECORD",
+      truthStatus: "NOT_VERIFIED",
+      provenance: {
+        ...PROVENANCE,
+        documentId: "page-b",
+        recordType: "BUSENTRY",
+        recordId: "entry-unbound"
+      },
+      extensions: { easyeda: {} }
+    }
+  ];
+  return {
+    ...base,
+    buses,
+    busEntries,
+    summary: {
+      ...base.summary,
+      buses: buses.length,
+      busesWithExplicitNet: buses.length,
+      busesWithEmptyEntrySet: 1,
+      busSegments: 0,
+      busEntries: busEntries.length,
+      busEntriesEmbedded: 2,
+      busEntriesSeparate: 1,
+      busEntriesUnbound: 1
     }
   };
 }
@@ -1744,6 +1872,54 @@ test("显式网络按名称聚合但保持导线标签边界", () => {
       ["GND", 1, ["page-a"], "EXPLICIT_WIRE_LABEL_ONLY"],
       ["VCC", 2, ["page-a", "page-b"], "EXPLICIT_WIRE_LABEL_ONLY"]
     ]
+  );
+});
+
+test("BUS 与 BUSENTRY 分页保留显式顺序、编码并绑定工程筛选域", () => {
+  const ir = busFixture();
+  const index = new EdaIrQueryIndex(ir);
+  const buses = index.listBuses({ netNameContains: "data", limit: 1 });
+  assert.equal(buses.total, 1);
+  assert.equal(buses.items[0]?.id, "bus-a");
+  assert.equal(buses.items[0]?.explicitNetName, "DATA[7:0]");
+  assert.equal(buses.items[0]?.memberExpansion, "NOT_PERFORMED");
+
+  const entries = index.listBusEntries({ busId: "bus-a", limit: 1 });
+  assert.equal(entries.total, 2);
+  assert.equal(entries.items[0]?.id, "entry-a");
+  assert.equal(entries.items[0]?.order, 0);
+  assert.ok(entries.nextCursor);
+  const next = index.listBusEntries({
+    busId: "bus-a",
+    limit: 1,
+    cursor: entries.nextCursor
+  });
+  assert.equal(next.items[0]?.id, "entry-b");
+  assert.equal(
+    index.listBusEntries({
+      associationStatus: "SEPARATE_RECORD_WITHOUT_EXPLICIT_BUS_ID"
+    }).items[0]?.id,
+    "entry-unbound"
+  );
+  assert.equal(index.getEvidence("bus", "bus-a", "page-a").status, "FOUND");
+  assert.equal(
+    index.getEvidence("busEntry", "entry-unbound", "page-b").status,
+    "FOUND"
+  );
+
+  const otherProject = new EdaIrQueryIndex({
+    ...ir,
+    irSha256: "d".repeat(64)
+  });
+  assert.throws(
+    () =>
+      otherProject.listBusEntries({
+        busId: "bus-a",
+        limit: 1,
+        cursor: entries.nextCursor
+      }),
+    (error: unknown) =>
+      error instanceof QueryError && error.code === "QUERY_INVALID_CURSOR"
   );
 });
 

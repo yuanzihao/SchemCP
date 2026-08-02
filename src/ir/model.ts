@@ -545,6 +545,67 @@ export interface IrWire {
   readonly extensions: IrEasyEdaExtension;
 }
 
+export type IrBusEncoding =
+  | "OFFICIAL_DOTS_WITH_SEPARATE_BUSENTRY_RECORDS"
+  | "OBSERVED_EMBEDDED_BUSENTRY_MAP"
+  | "HYBRID_DOTS_WITH_EMBEDDED_BUSENTRY_MAP";
+
+export type IrBusEntryEncoding =
+  | "OFFICIAL_SEPARATE_BUSENTRY_RECORD"
+  | "OBSERVED_EMBEDDED_BUSENTRY_MAP_ITEM";
+
+export interface IrBusSegment {
+  readonly id: string;
+  readonly start: {
+    readonly x: number;
+    readonly y: number;
+  };
+  readonly end: {
+    readonly x: number;
+    readonly y: number;
+  };
+  readonly provenance: IrRecordProvenance;
+  readonly extensions: IrEasyEdaExtension;
+}
+
+export interface IrBusEntry {
+  readonly id: string;
+  readonly pageId: string;
+  readonly busId?: string;
+  readonly encoding: IrBusEntryEncoding;
+  readonly associationStatus:
+    | "EMBEDDED_IN_BUS_RECORD"
+    | "EXPLICIT_PARENT_ID"
+    | "SEPARATE_RECORD_WITHOUT_EXPLICIT_BUS_ID"
+    | "EXPLICIT_PARENT_ID_NOT_FOUND";
+  readonly order: number;
+  readonly busGroupId?: number;
+  readonly point: {
+    readonly x: number;
+    readonly y: number;
+  };
+  readonly rotation: number;
+  readonly evidenceClass: "EXPLICIT_PROJECT_RECORD";
+  readonly truthStatus: "NOT_VERIFIED";
+  readonly provenance: IrRecordProvenance;
+  readonly extensions: IrEasyEdaExtension;
+}
+
+export interface IrBus {
+  readonly id: string;
+  readonly pageId: string;
+  readonly encoding: IrBusEncoding;
+  readonly explicitNetName?: string;
+  readonly segments: readonly IrBusSegment[];
+  readonly entryIds: readonly string[];
+  readonly attributes: readonly IrAttribute[];
+  readonly memberExpansion: "NOT_PERFORMED";
+  readonly evidenceClass: "EXPLICIT_PROJECT_RECORD";
+  readonly truthStatus: "NOT_VERIFIED";
+  readonly provenance: IrRecordProvenance;
+  readonly extensions: IrEasyEdaExtension;
+}
+
 export type IrPinConnectionCandidateStatus =
   | "UNIQUE_EXPLICIT_NET_CANDIDATE"
   | "CONFLICTING_EXPLICIT_NET_CANDIDATES"
@@ -795,6 +856,14 @@ export interface EdaIrSummary {
   readonly wires: number;
   readonly wiresWithExplicitNet: number;
   readonly wireSegments: number;
+  readonly buses: number;
+  readonly busesWithExplicitNet: number;
+  readonly busesWithEmptyEntrySet: number;
+  readonly busSegments: number;
+  readonly busEntries: number;
+  readonly busEntriesEmbedded: number;
+  readonly busEntriesSeparate: number;
+  readonly busEntriesUnbound: number;
   readonly pinInstances: number;
   readonly pinInstancesWithUniqueExplicitNetCandidate: number;
   readonly pinInstancesWithConflictingExplicitNetCandidates: number;
@@ -857,6 +926,8 @@ export interface EdaIr {
   readonly symbolPins: readonly IrSymbolPin[];
   readonly devices: readonly IrDevice[];
   readonly wires: readonly IrWire[];
+  readonly buses: readonly IrBus[];
+  readonly busEntries: readonly IrBusEntry[];
   readonly pinInstances: readonly IrPinInstance[];
   readonly shortRelations: readonly IrShortRelationCandidate[];
   readonly networkEndpointCandidates: readonly IrNetworkEndpointCandidate[];

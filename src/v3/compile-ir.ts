@@ -17,6 +17,9 @@ import type {
   EdaIr,
   IrAttribute,
   IrBoard,
+  IrBus,
+  IrBusEntry,
+  IrBusSegment,
   IrComponentGroup,
   IrComponentGroupOverride,
   IrComponentGroupVariantIndex,
@@ -91,6 +94,7 @@ const MAX_SCHEMATIC_TABLE_ROWS = 256;
 const MAX_SCHEMATIC_TABLE_COLUMNS = 256;
 const MAX_SCHEMATIC_TABLE_CELLS = 16 * 1024;
 const MAX_SCHEMATIC_GRAPHIC_POINTS = 64 * 1024;
+const MAX_BUS_ENTRIES_PER_BUS = 1_024;
 const SCHEMATIC_GRAPHIC_KINDS = new Set<IrSchematicGraphicKind>([
   "POLY",
   "RECT",
@@ -121,6 +125,12 @@ function isJsonValue(value: unknown): value is JsonValue {
     );
   }
   return false;
+}
+
+function isObjectRecord(
+  value: unknown
+): value is Readonly<Record<string, unknown>> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
 function asJsonObject(value: Readonly<Record<string, unknown>>): JsonObject {
@@ -1121,10 +1131,11 @@ function compileSchematicTables(
 
 function pointSegmentsFromDots(
   document: ReducedV3DocumentSnapshot,
-  wire: ReducedV3Record,
-  wireId: string,
+  primitive: ReducedV3Record,
+  primitiveId: string,
   inner: Readonly<Record<string, unknown>>,
-  onInvalid: () => void
+  onInvalid: () => void,
+  representation: "WIRE_DOTS" | "BUS_DOTS"
 ): readonly IrWireSegment[] {
   if (!Object.hasOwn(inner, "dots")) {
     return [];
@@ -1146,7 +1157,7 @@ function pointSegmentsFromDots(
     }
     for (let index = 0; index + 3 < path.length; index += 2) {
       result.push({
-        id: `${wireId}:dots:${pathIndex}:${index / 2}`,
+        id: `${primitiveId}:dots:${pathIndex}:${index / 2}`,
         start: {
           x: path[index] as number,
           y: path[index + 1] as number
@@ -1155,10 +1166,10 @@ function pointSegmentsFromDots(
           x: path[index + 2] as number,
           y: path[index + 3] as number
         },
-        provenance: sourceOf(document, wire),
+        provenance: sourceOf(document, primitive),
         extensions: {
           easyeda: {
-            representation: "WIRE_DOTS",
+            representation,
             pathIndex,
             segmentIndex: index / 2
           }
@@ -1167,6 +1178,62 @@ function pointSegmentsFromDots(
     }
   }
   return result;
+}
+
+interface ValidBusEntryFields {
+  readonly order: number;
+  readonly busGroupId?: number;
+  readonly point: {
+    readonly x: number;
+    readonly y: number;
+  };
+  readonly rotation: number;
+}
+
+function busEntryFields(
+  inner: Readonly<Record<string, unknown>>,
+  requireBusGroupId: boolean
+): ValidBusEntryFields | undefined {
+  const order = inner.order;
+  const busGroupId = inner.busGroupId;
+  const pointX = inner.pointX;
+  const pointY = inner.pointY;
+  const rotation = inner.rotation;
+  if (
+    !Number.isSafeInteger(order) ||
+    (order as number) < 0 ||
+    typeof pointX !== "number" ||
+    !Number.isFinite(pointX) ||
+    typeof pointY !== "number" ||
+    !Number.isFinite(pointY) ||
+    typeof rotation !== "number" ||
+    !Number.isFinite(rotation) ||
+    (requireBusGroupId &&
+      (!Number.isSafeInteger(busGroupId) || (busGroupId as number) < 0)) ||
+    (!requireBusGroupId &&
+      busGroupId !== undefined &&
+      (!Number.isSafeInteger(busGroupId) || (busGroupId as number) < 0))
+  ) {
+    return undefined;
+  }
+  return {
+    order: order as number,
+    ...(busGroupId === undefined
+      ? {}
+      : { busGroupId: busGroupId as number }),
+    point: { x: pointX, y: pointY },
+    rotation
+  };
+}
+
+function compareBusEntry(left: IrBusEntry, right: IrBusEntry): number {
+  return (
+    compareText(left.pageId, right.pageId) ||
+    compareText(left.busId ?? "", right.busId ?? "") ||
+    left.order - right.order ||
+    compareText(left.id, right.id) ||
+    compareText(left.encoding, right.encoding)
+  );
 }
 
 function compilePage(
@@ -1440,15 +1507,22 @@ function compilePage(
         recordType: "WIRE"
       });
     }
-    const segments = pointSegmentsFromDots(document, selected, id, inner, () => {
-      addDiagnostic(state.diagnostics, {
-        code: "IR_INVALID_WIRE_DOTS",
-        severity: "error",
-        message: "WIRE.dots 包含非法路径，相关路径未编译。",
-        documentType: document.docType,
-        recordType: "WIRE"
-      });
-    });
+    const segments = pointSegmentsFromDots(
+      document,
+      selected,
+      id,
+      inner,
+      () => {
+        addDiagnostic(state.diagnostics, {
+          code: "IR_INVALID_WIRE_DOTS",
+          severity: "error",
+          message: "WIRE.dots 包含非法路径，相关路径未编译。",
+          documentType: document.docType,
+          recordType: "WIRE"
+        });
+      },
+      "WIRE_DOTS"
+    );
     const childSegments: IrWireSegment[] = [];
     for (const line of lineGroups.get(id) ?? []) {
       const lineInner = innerOf(line);
@@ -1518,6 +1592,234 @@ function compilePage(
     );
   }
 
+  const busIds = new Set<string>();
+  const busEntryIdsByBus = new Map<string, string[]>();
+  for (const selected of recordsOfType(records, "BUS")) {
+    const inner = innerOf(selected);
+    const id = recordId(selected);
+    if (inner === undefined || id === undefined) {
+      unmodeled(state.unmodeledRecords, document, selected);
+      addDiagnostic(state.diagnostics, {
+        code: "IR_INVALID_BUS",
+        severity: "error",
+        message: "BUS 缺少 id 或对象数据，未进入显式总线模型。",
+        documentType: document.docType,
+        recordType: "BUS"
+      });
+      continue;
+    }
+    const hasDots = Object.hasOwn(inner, "dots");
+    const hasEmbeddedEntries = Object.hasOwn(inner, "busEntry");
+    if (
+      (!hasDots && !hasEmbeddedEntries) ||
+      (hasEmbeddedEntries && !isObjectRecord(inner.busEntry))
+    ) {
+      unmodeled(state.unmodeledRecords, document, selected);
+      addDiagnostic(state.diagnostics, {
+        code: "IR_INVALID_BUS",
+        severity: "error",
+        message:
+          "BUS 既没有官方 dots，也没有有效的内嵌 busEntry 对象，未进入显式总线模型。",
+        documentType: document.docType,
+        recordType: "BUS"
+      });
+      continue;
+    }
+    const embeddedEntries = hasEmbeddedEntries
+      ? Object.entries(inner.busEntry as Readonly<Record<string, unknown>>)
+      : [];
+    if (embeddedEntries.length > MAX_BUS_ENTRIES_PER_BUS) {
+      unmodeled(state.unmodeledRecords, document, selected);
+      addDiagnostic(state.diagnostics, {
+        code: "IR_BUS_ENTRY_LIMIT_EXCEEDED",
+        severity: "error",
+        message: `单条 BUS 的内嵌入口超过 ${MAX_BUS_ENTRIES_PER_BUS} 项安全上限，整条记录未进入模型。`,
+        documentType: document.docType,
+        recordType: "BUS"
+      });
+      continue;
+    }
+
+    busIds.add(id);
+    const attributes = attributesFor(attributesByParent, id);
+    const explicitNetName = uniqueAttributeString(attributes, "NET", () => {
+      addDiagnostic(state.diagnostics, {
+        code: "IR_ATTRIBUTE_CONFLICT",
+        severity: "error",
+        message: "同一总线存在不同 NET 属性值，未选择任一网络名。",
+        documentType: document.docType,
+        recordType: "ATTR"
+      });
+    });
+    if (explicitNetName === undefined) {
+      addDiagnostic(state.diagnostics, {
+        code: "IR_BUS_EXPLICIT_NET_MISSING",
+        severity: "warning",
+        message:
+          "总线没有唯一的显式 NET 属性；不会展开名称或猜测成员网络。",
+        documentType: document.docType,
+        recordType: "BUS"
+      });
+    }
+    const segments: readonly IrBusSegment[] = hasDots
+      ? pointSegmentsFromDots(
+          document,
+          selected,
+          id,
+          inner,
+          () => {
+            addDiagnostic(state.diagnostics, {
+              code: "IR_INVALID_BUS_DOTS",
+              severity: "error",
+              message: "BUS.dots 包含非法路径，相关路径未编译。",
+              documentType: document.docType,
+              recordType: "BUS"
+            });
+          },
+          "BUS_DOTS"
+        )
+      : [];
+    const entryIds: string[] = [];
+    const validEmbeddedEntries: IrBusEntry[] = [];
+    for (const [entryId, rawEntry] of embeddedEntries) {
+      const fields = isObjectRecord(rawEntry)
+        ? busEntryFields(rawEntry, false)
+        : undefined;
+      if (entryId === "" || fields === undefined || !isObjectRecord(rawEntry)) {
+        addDiagnostic(state.diagnostics, {
+          code: "IR_INVALID_EMBEDDED_BUS_ENTRY",
+          severity: "error",
+          message:
+            "BUS.busEntry 成员缺少非空 ID、有效 order、坐标或旋转；该入口未进入模型。",
+          documentType: document.docType,
+          recordType: "BUS"
+        });
+        continue;
+      }
+      entryIds.push(entryId);
+      validEmbeddedEntries.push({
+        id: entryId,
+        pageId: document.uuid,
+        busId: id,
+        encoding: "OBSERVED_EMBEDDED_BUSENTRY_MAP_ITEM",
+        associationStatus: "EMBEDDED_IN_BUS_RECORD",
+        ...fields,
+        evidenceClass: "EXPLICIT_PROJECT_RECORD",
+        truthStatus: "NOT_VERIFIED",
+        provenance: sourceOf(document, selected),
+        extensions: extension(rawEntry)
+      });
+    }
+    validEmbeddedEntries.sort(compareBusEntry);
+    entryIds.splice(
+      0,
+      entryIds.length,
+      ...validEmbeddedEntries.map((entry) => entry.id)
+    );
+    const duplicateOrderCount =
+      validEmbeddedEntries.length -
+      new Set(validEmbeddedEntries.map((entry) => entry.order)).size;
+    if (duplicateOrderCount > 0) {
+      addDiagnostic(
+        state.diagnostics,
+        {
+          code: "IR_BUS_ENTRY_ORDER_DUPLICATE",
+          severity: "warning",
+          message:
+            "同一 BUS 的多个入口使用相同 order；已保留全部入口并用显式 ID 稳定排序。",
+          documentType: document.docType,
+          recordType: "BUS"
+        },
+        duplicateOrderCount
+      );
+    }
+    state.busEntries.push(...validEmbeddedEntries);
+    busEntryIdsByBus.set(id, entryIds);
+    state.buses.push({
+      id,
+      pageId: document.uuid,
+      encoding:
+        hasDots && hasEmbeddedEntries
+          ? "HYBRID_DOTS_WITH_EMBEDDED_BUSENTRY_MAP"
+          : hasEmbeddedEntries
+            ? "OBSERVED_EMBEDDED_BUSENTRY_MAP"
+            : "OFFICIAL_DOTS_WITH_SEPARATE_BUSENTRY_RECORDS",
+      ...(explicitNetName === undefined ? {} : { explicitNetName }),
+      segments,
+      entryIds,
+      attributes,
+      memberExpansion: "NOT_PERFORMED",
+      evidenceClass: "EXPLICIT_PROJECT_RECORD",
+      truthStatus: "NOT_VERIFIED",
+      provenance: sourceOf(document, selected),
+      extensions: extension(inner)
+    });
+  }
+
+  for (const selected of recordsOfType(records, "BUSENTRY")) {
+    const inner = innerOf(selected);
+    const id = recordId(selected);
+    const fields = inner === undefined ? undefined : busEntryFields(inner, true);
+    if (inner === undefined || id === undefined || fields === undefined) {
+      unmodeled(state.unmodeledRecords, document, selected);
+      addDiagnostic(state.diagnostics, {
+        code: "IR_INVALID_SEPARATE_BUS_ENTRY",
+        severity: "error",
+        message:
+          "独立 BUSENTRY 缺少 id、busGroupId、order、有限坐标或旋转，未进入模型。",
+        documentType: document.docType,
+        recordType: "BUSENTRY"
+      });
+      continue;
+    }
+    const explicitParentId = optionalNonEmptyString(inner, "parentId");
+    const resolvedBusId =
+      explicitParentId !== undefined && busIds.has(explicitParentId)
+        ? explicitParentId
+        : undefined;
+    const associationStatus =
+      resolvedBusId !== undefined
+        ? ("EXPLICIT_PARENT_ID" as const)
+        : explicitParentId === undefined
+          ? ("SEPARATE_RECORD_WITHOUT_EXPLICIT_BUS_ID" as const)
+          : ("EXPLICIT_PARENT_ID_NOT_FOUND" as const);
+    if (associationStatus === "EXPLICIT_PARENT_ID_NOT_FOUND") {
+      addDiagnostic(state.diagnostics, {
+        code: "IR_BUSENTRY_PARENT_NOT_FOUND",
+        severity: "warning",
+        message:
+          "独立 BUSENTRY 的显式 parentId 未命中同页 BUS；入口保持未绑定，不用几何猜测归属。",
+        documentType: document.docType,
+        recordType: "BUSENTRY"
+      });
+    }
+    if (resolvedBusId !== undefined) {
+      busEntryIdsByBus.get(resolvedBusId)?.push(id);
+    }
+    state.busEntries.push({
+      id,
+      pageId: document.uuid,
+      ...(resolvedBusId === undefined ? {} : { busId: resolvedBusId }),
+      encoding: "OFFICIAL_SEPARATE_BUSENTRY_RECORD",
+      associationStatus,
+      ...fields,
+      evidenceClass: "EXPLICIT_PROJECT_RECORD",
+      truthStatus: "NOT_VERIFIED",
+      provenance: sourceOf(document, selected),
+      extensions: extension(inner)
+    });
+  }
+  for (const [busId, entryIds] of busEntryIdsByBus) {
+    const orderedIds = state.busEntries
+      .filter(
+        (entry) =>
+          entry.pageId === document.uuid && entry.busId === busId
+      )
+      .sort(compareBusEntry)
+      .map((entry) => entry.id);
+    entryIds.splice(0, entryIds.length, ...orderedIds);
+  }
+
   const sortedComponentIds = componentIds.sort(
     (left, right) => right.length - left.length || compareText(left, right)
   );
@@ -1526,7 +1828,12 @@ function compilePage(
     (left, right) => right - left
   );
   for (const [parentId, items] of attributesByParent) {
-    if (parentId === "" || componentIdSet.has(parentId) || wireIds.has(parentId)) {
+    if (
+      parentId === "" ||
+      componentIdSet.has(parentId) ||
+      wireIds.has(parentId) ||
+      busIds.has(parentId)
+    ) {
       continue;
     }
     const matchingComponents = componentIdLengths
@@ -1582,6 +1889,8 @@ function compilePage(
     "ATTR",
     "WIRE",
     "LINE",
+    "BUS",
+    "BUSENTRY",
     "POLY",
     "RECT",
     "ARC",
@@ -2457,6 +2766,8 @@ interface CompilerState {
   readonly symbolPins: IrSymbolPin[];
   readonly devices: IrDevice[];
   readonly wires: IrWire[];
+  readonly buses: IrBus[];
+  readonly busEntries: IrBusEntry[];
   readonly componentPinOverrides: ComponentPinOverrideCandidate[];
   readonly unboundAttributes: IrUnboundAttribute[];
   readonly unmodeledRecords: IrUnmodeledRecord[];
@@ -2514,6 +2825,8 @@ export function compileV3ToEdaIr(
     symbolPins: [],
     devices: [],
     wires: [],
+    buses: [],
+    busEntries: [],
     componentPinOverrides: [],
     unboundAttributes: [],
     unmodeledRecords: [],
@@ -2911,6 +3224,11 @@ export function compileV3ToEdaIr(
     const pageOrder = compareText(left.pageId, right.pageId);
     return pageOrder !== 0 ? pageOrder : compareText(left.id, right.id);
   });
+  const buses = state.buses.sort(
+    (left, right) =>
+      compareText(left.pageId, right.pageId) || compareText(left.id, right.id)
+  );
+  const busEntries = state.busEntries.sort(compareBusEntry);
   const pinInstanceCompilation = compilePinInstances(
     components,
     symbols,
@@ -3415,6 +3733,27 @@ export function compileV3ToEdaIr(
     wires: wires.length,
     wiresWithExplicitNet: wires.filter((item) => item.explicitNetName !== undefined).length,
     wireSegments: wires.reduce((total, wire) => total + wire.segments.length, 0),
+    buses: buses.length,
+    busesWithExplicitNet: buses.filter(
+      (item) => item.explicitNetName !== undefined
+    ).length,
+    busesWithEmptyEntrySet: buses.filter(
+      (item) => item.entryIds.length === 0
+    ).length,
+    busSegments: buses.reduce(
+      (total, bus) => total + bus.segments.length,
+      0
+    ),
+    busEntries: busEntries.length,
+    busEntriesEmbedded: busEntries.filter(
+      (item) => item.encoding === "OBSERVED_EMBEDDED_BUSENTRY_MAP_ITEM"
+    ).length,
+    busEntriesSeparate: busEntries.filter(
+      (item) => item.encoding === "OFFICIAL_SEPARATE_BUSENTRY_RECORD"
+    ).length,
+    busEntriesUnbound: busEntries.filter(
+      (item) => item.busId === undefined
+    ).length,
     pinInstances: pinSummary.pinInstances,
     pinInstancesWithUniqueExplicitNetCandidate:
       pinSummary.uniqueExplicitNetCandidates,
@@ -3487,6 +3826,8 @@ export function compileV3ToEdaIr(
     symbolPins,
     devices,
     wires,
+    buses,
+    busEntries,
     pinInstances,
     shortRelations,
     networkEndpointCandidates,

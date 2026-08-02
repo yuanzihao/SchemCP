@@ -31,6 +31,7 @@ npm 包：`@yuanzihao/schemcp`
 - **附件优先**：MCP 可以无工程启动，用户在对话中提供文件后再显式打开。
 - **多工程工作区**：一个会话最多打开 4 个工程，并可建立用户声明的装配关系。
 - **精确器件上下文**：兼容两种 INSTANCE 路径编码，查询基础组件或指定层级实例中的有效位号、属性、引脚覆盖和网络证据。
+- **显式总线事实**：兼容官方独立 `BUSENTRY` 与当前导出的内嵌 `busEntry`，保留 `NET`、成员顺序和坐标，不自动展开总线名称。
 - **可选 `.enet`**：用户可按工程附加网表，以精确核对引脚—网络端点。
 - **事实边界明确**：工程事实、器件事实和工程推断分开返回，不把几何候选冒充完整电气真值。
 - **只读且有界**：工具使用分页、稳定错误码和输入限额；不会修改原理图或生成代码。
@@ -191,13 +192,14 @@ schemcp mcp-config --client claude-code
 3. 将客户端提供的精确绝对路径传给 `open_schematic_project`。
 4. 调用 `list_schematic_projects` 获取 `projectHandle`。
 5. 调用 `list_design_hierarchy` 和 `list_instance_contexts` 获取 Sheet 与 INSTANCE；需要层级实例有效属性时，把返回的 `instanceContextId` 传给 `list_components`、`get_component` 或 `get_component_pins`。
-6. 需要严格引脚—网络核对时，再用 `attach_schematic_netlist` 为对应工程附加 `.enet`。
+6. 工程含 BUS 时，先用 `list_buses` 的 `BUSES` 视图定位总线，再用 `ENTRIES` 视图按显式 `order` 分页读取入口；不要自行展开 `DATA[7:0]`。
+7. 需要严格引脚—网络核对时，再用 `attach_schematic_netlist` 为对应工程附加 `.enet`。
 
 推荐给模型的首条提示：
 
 ```text
 请使用 schemcp 打开我提供的 .epro2 附件，先调用
-list_schematic_projects 和 list_design_hierarchy，再按页查询器件与引脚。
+list_schematic_projects 和 list_design_hierarchy，再按页查询器件、引脚和显式 BUS。
 如果没有 .enet，请把精确工程事实与几何网络候选分开表述。
 ```
 
@@ -267,7 +269,7 @@ schemcp
 ## 文档与安全
 
 - [MCP 接口说明](docs/MCP_SERVICE.md)
-- [48 个 MCP 工具与 JSON Schema](docs/MCP_TOOLS.md)
+- [49 个 MCP 工具与 JSON Schema](docs/MCP_TOOLS.md)
 - [用户指南](docs/USER_GUIDE.md)
 - [贡献指南](CONTRIBUTING.md)
 - [安全策略](SECURITY.md)

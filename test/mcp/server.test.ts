@@ -150,6 +150,32 @@ const EPRU = [
     }
   ),
   record(
+    { type: "BUS", id: "bus-a", ticket: 9 },
+    {
+      groupId: "",
+      locked: false,
+      zIndex: 2,
+      busEntry: {
+        "bus-entry-b": {
+          order: 1,
+          pointX: 40,
+          pointY: 50,
+          rotation: 0
+        },
+        "bus-entry-a": {
+          order: 0,
+          pointX: 30,
+          pointY: 50,
+          rotation: 0
+        }
+      }
+    }
+  ),
+  record(
+    { type: "ATTR", id: "attr-bus-net", ticket: 9 },
+    { parentId: "bus-a", key: "NET", value: "DATA[1:0]" }
+  ),
+  record(
     { type: "DOCHEAD", ticket: 10 },
     { docType: "SYMBOL", client: "client-a", uuid: "symbol-a" }
   ),
@@ -815,6 +841,51 @@ test("MCP 无工程启动后可直接打开对话附件并安全关闭", async (
         }
       ).summary.components,
       1
+    );
+
+    const buses = structured(
+      await client.callTool({
+        name: "list_buses",
+        arguments: { view: "BUSES", netNameContains: "data" }
+      })
+    );
+    const busItems = (
+      buses.page as {
+        readonly items: readonly {
+          readonly id: string;
+          readonly explicitNetName: string;
+          readonly entryCount: number;
+          readonly memberExpansion: string;
+        }[];
+      }
+    ).items;
+    assert.equal(busItems.length, 1);
+    assert.equal(busItems[0]?.explicitNetName, "DATA[1:0]");
+    assert.equal(busItems[0]?.entryCount, 2);
+    assert.equal(busItems[0]?.memberExpansion, "NOT_PERFORMED");
+    const busEntries = structured(
+      await client.callTool({
+        name: "list_buses",
+        arguments: {
+          view: "ENTRIES",
+          busId: busItems[0]?.id,
+          limit: 2
+        }
+      })
+    );
+    assert.deepEqual(
+      (
+        busEntries.page as {
+          readonly items: readonly {
+            readonly id: string;
+            readonly order: number;
+          }[];
+        }
+      ).items.map((entry) => [entry.id, entry.order]),
+      [
+        ["bus-entry-a", 0],
+        ["bus-entry-b", 1]
+      ]
     );
 
     const contexts = structured(

@@ -45,14 +45,27 @@ function sample(sampleId: string): Readonly<Record<string, unknown>> {
       attributeCount: 4,
       explicitDnpCount: 3,
       requiredDnpDesignators: ["C1", "C2"]
+    },
+    busBaseline: {
+      buses: 2,
+      busesWithExplicitNet: 2,
+      busesObservedEmbedded: 1,
+      busesOfficialSeparate: 1,
+      busesHybrid: 0,
+      busesWithEmptyEntrySet: 1,
+      busSegments: 2,
+      busEntries: 3,
+      busEntriesEmbedded: 2,
+      busEntriesSeparate: 1,
+      busEntriesUnbound: 1
     }
   };
 }
 
 function manifest(): Readonly<Record<string, unknown>> {
   return {
-    schemaVersion: "1.0.0",
-    baselineId: "v0.2-m1",
+    schemaVersion: "1.1.0",
+    baselineId: "v0.2-m2",
     packageAcceptanceSampleId: "real-02",
     samples: [sample("real-02"), sample("real-01")]
   };
@@ -60,7 +73,7 @@ function manifest(): Readonly<Record<string, unknown>> {
 
 test("真实工程私有清单严格解析、排序并保留里程碑基线", () => {
   const parsed = parseRealProjectManifest(manifest());
-  assert.equal(parsed.baselineId, "v0.2-m1");
+  assert.equal(parsed.baselineId, "v0.2-m2");
   assert.deepEqual(
     parsed.samples.map((item) => item.sampleId),
     ["real-01", "real-02"]
@@ -69,6 +82,7 @@ test("真实工程私有清单严格解析、排序并保留里程碑基线", ()
     parsed.samples[0]?.assemblyBaseline?.requiredDnpDesignators.length,
     2
   );
+  assert.equal(parsed.samples[0]?.busBaseline?.busEntries, 3);
 });
 
 test("真实工程清单拒绝未知字段、重复样本和不守恒计数", () => {
@@ -95,6 +109,22 @@ test("真实工程清单拒绝未知字段、重复样本和不守恒计数", ()
             hierarchyBaseline: {
               ...(broken.hierarchyBaseline as Record<string, unknown>),
               instanceContextsUnresolved: 1
+            }
+          }
+        ]
+      }),
+    (error: unknown) => error instanceof RealProjectManifestError
+  );
+  assert.throws(
+    () =>
+      parseRealProjectManifest({
+        ...manifest(),
+        samples: [
+          {
+            ...broken,
+            busBaseline: {
+              ...(broken.busBaseline as Record<string, unknown>),
+              busEntriesSeparate: 2
             }
           }
         ]

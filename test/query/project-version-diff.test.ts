@@ -255,6 +255,8 @@ function ir(
     symbolPins: [],
     devices: [],
     wires,
+    buses: [],
+    busEntries: [],
     pinInstances: [],
     shortRelations: [],
     networkEndpointCandidates: [],
