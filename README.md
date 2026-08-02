@@ -14,7 +14,7 @@ SchemCP 是一个本地优先、只读、确定性、可审计的嘉立创 EDA �
 
 SchemCP 是面向 MCP 客户端的原理图上下文服务。名称可以理解为 `Sche[m] + MCP → SchemCP`，共享了字母 `M`。
 
-当前版本：`0.1.0`
+当前仓库候选版本：`0.2.0`（尚未发布）
 
 MCP Registry 名称：`io.github.yuanzihao/schemcp`
 
@@ -22,15 +22,22 @@ npm 包：`@yuanzihao/schemcp`
 
 许可证：Apache-2.0
 
-> `@yuanzihao/schemcp@0.1.0` 已发布到 npm，可直接通过下方 `npx` 命令启动。版本与完整性信息以 [npm 官方页面](https://www.npmjs.com/package/@yuanzihao/schemcp) 为准。
+> npm 当前已发布稳定版仍为 `@yuanzihao/schemcp@0.1.0`。仓库中的 `0.2.0` 在完成 Windows x64 真实主机验收和明确发布授权前只作为 RC 候选；版本与完整性信息以 [npm 官方页面](https://www.npmjs.com/package/@yuanzihao/schemcp) 为准。
 
 ## 为什么使用 SchemCP
 
 - **离线原理图解析**：输入是本地 `.epro2`，普通查询不依赖在线服务。
-- **稳定中间表示**：公开 EDA-IR 固定标识为 `schemcp.eda-ir` 1.0.0，并对确定性内容计算哈希。
+- **稳定中间表示**：公开 EDA-IR 固定标识为 `schemcp.eda-ir` 1.1.0，并对确定性内容计算哈希。
 - **附件优先**：MCP 可以无工程启动，用户在对话中提供文件后再显式打开。
 - **多工程工作区**：一个会话最多打开 4 个工程，并可建立用户声明的装配关系。
-- **精确器件上下文**：查询位号、器件标题、制造商、MPN、立创商城 C-ID、Datasheet 链接、引脚、实例属性和网络证据。
+- **精确器件上下文**：兼容两种 INSTANCE 路径编码，查询基础组件或指定层级实例中的有效位号、属性、引脚覆盖和网络证据。
+- **显式总线事实**：兼容官方独立 `BUSENTRY` 与当前导出的内嵌 `busEntry`，保留 `NET`、成员顺序和坐标，不自动展开总线名称。
+- **有效装配状态**：按 Device 默认值、组件属性、层级实例覆盖的固定顺序解析 `Add into BOM`；仅显式 `yes/no` 返回 `POPULATED/DNP`，其余保持 `UNKNOWN`。
+- **完整逻辑器件引脚**：按同一原理图中的位号、Symbol 和 `PART` 合并多单元器件及分离电源单元；缺失、重复或来源不完整时返回 `PARTIAL/UNKNOWN`，并保留显式隐藏引脚。
+- **版本化组件语义**：`schemcp.semantic-rules/1` 以确定性规则给出 MCU/MPU、电源、存储器、收发器、连接器、保护/滤波等角色候选及页内电源域候选；每项都保留规则、证据和 `CANDIDATE/UNRESOLVED` 边界。
+- **实际连接接口候选**：`list_interfaces` 识别 SWD/JTAG、UART、I²C、SPI/QSPI、CAN、USB、Ethernet、SDIO、I²S/SAI、模拟和 GPIO；未接线复用功能不会形成接口，缺少信号只返回 `PARTIAL_CANDIDATE`，DNP 默认排除但可查询证据。
+- **完整 P2 资源模型**：显式 `IrResourceNode/IrResourceEdge` 支撑 `get_power_tree`、`get_clock_tree`、`get_reset_boot_paths` 和 `get_mcu_pin_usage`，覆盖电源转换/开关候选、外部时钟源/缓冲候选、复位监督/外部控制/手动复位、启动绑带与 MCU 引脚资源；结果有界、可分页并保留来源和稳定未解析原因，不推断 MCU 内部 PLL、固件配置或穿过普通器件猜测连通。
+- **保守的 MCU 引脚状态**：每个引脚输出 `USED/EXPLICIT_NC/UNUSED/UNKNOWN/DNP_COMPONENT`，同时保留更细的网表/候选依据、电源域、接口和外部资源角色。只有多单元/隐藏引脚模型完整、基础 Variant、器件已装配，且工程显式 NC 或绑定 `.enet` 明确空网络时才确认未使用；其余保持 `UNKNOWN`。
 - **可选 `.enet`**：用户可按工程附加网表，以精确核对引脚—网络端点。
 - **事实边界明确**：工程事实、器件事实和工程推断分开返回，不把几何候选冒充完整电气真值。
 - **只读且有界**：工具使用分页、稳定错误码和输入限额；不会修改原理图或生成代码。
@@ -43,7 +50,7 @@ SchemCP 是独立的社区开源项目，与嘉立创、立创商城、JLCEDA �
 
 ### 操作系统
 
-| 平台 | 0.1.0 支持状态 | 发布门禁 |
+| 平台 | 0.2.0 RC 支持状态 | 发布门禁 |
 | --- | --- | --- |
 | Linux x64 | 支持 | 全量测试、覆盖率、两次确定性打包、离线安装和 MCP 协议验收 |
 | macOS arm64/x64 | 支持 | 全量测试、两次确定性打包、离线安装和 MCP 协议验收 |
@@ -53,11 +60,13 @@ Linux 与 macOS 对私有目录和文件强制检查 `0700/0600`。Windows 不�
 
 ### 输入格式与能力
 
-| 能力 | 0.1.0 状态 |
+| 能力 | 0.2.0 RC 状态 |
 | --- | --- |
 | 嘉立创 EDA 专业版 `.epro2` 原理图离线解析 | 支持 |
 | 用户提供的 `.enet` 按工程绑定 | 支持，真实性与工程绑定保持未验证 |
 | 器件、引脚、显式网络标签、几何候选查询 | 支持 |
+| 组件角色、电源域和实际连接接口候选 | 支持，确定性规则推断且电气真值未验证 |
+| 电源树、外部时钟树、复位/启动路径与 MCU 引脚资源 | 支持，有界候选且电气真值未验证 |
 | 用户确认的多工程连接器映射 | 支持 |
 | Altium、KiCad、OrCAD 等其他 EDA 原理图工程 | 不支持，暂无解析计划；建议先导入嘉立创 EDA 专业版并核对后导出 `.epro2` |
 | PCB、在线 Bridge、插件 API、工程写入、代码生成 | 不支持 |
@@ -85,6 +94,15 @@ npx -y @yuanzihao/schemcp --help
 ```bash
 npx -y @yuanzihao/schemcp mcp
 ```
+
+## 从 0.1.x 迁移到 0.2.0
+
+- 升级后重新生成 EDA-IR 和 Context Pack。EDA-IR 已从 1.0.0 升至 1.1.0，Context Pack 已从 1.0.0 升至 1.1.0；不要把旧产物与 0.2.0 查询结果混用。
+- 重新启动 MCP 客户端并刷新工具列表。公共只读工具由 48 个增加到 54 个，新增 BUS、接口和四类 P2 资源查询。
+- 丢弃升级前保存的分页游标。游标绑定工程、实例、Variant、筛选条件和语义规则版本，不能跨版本复用。
+- 调整 MCU 引脚消费逻辑：优先读取目标级 `USED/EXPLICIT_NC/UNUSED/UNKNOWN/DNP_COMPONENT`，同时保留细分 `usageStatus` 作为证据；不得把旧版“无导线”结果迁移成 `UNUSED`。
+- 重新生成任何私有真实工程验收清单。0.2.0 的清单契约为 1.5.0，旧基线不得自动升级或自动接受差异，必须在真实嘉立创 EDA 导出工程上人工核对后冻结。
+- `0.2.0` 当前仍是 RC 候选。正式 npm 升级命令应等待发布授权与公开版本确认，不能把仓库版本号当成已发布版本。
 
 ## 接入客户端
 
@@ -190,14 +208,16 @@ schemcp mcp-config --client claude-code
 2. 在 MCP 客户端中附加或选择这个 `.epro2` 文件。
 3. 将客户端提供的精确绝对路径传给 `open_schematic_project`。
 4. 调用 `list_schematic_projects` 获取 `projectHandle`。
-5. 调用 `list_design_hierarchy`、`list_components`、`get_component` 和 `get_component_pins` 查询原理图。
-6. 需要严格引脚—网络核对时，再用 `attach_schematic_netlist` 为对应工程附加 `.enet`。
+5. 调用 `list_design_hierarchy` 和 `list_instance_contexts` 获取 Sheet 与 INSTANCE；需要层级实例有效属性时，把返回的 `instanceContextId` 传给 `list_components`、`get_component` 或 `get_component_pins`。
+6. 工程含 BUS 时，先用 `list_buses` 的 `BUSES` 视图定位总线，再用 `ENTRIES` 视图按显式 `order` 分页读取入口；不要自行展开 `DATA[7:0]`。
+7. 需要严格引脚—网络核对时，再用 `attach_schematic_netlist` 为对应工程附加 `.enet`。
+8. 需要 P2 资源分析时，分别调用 `get_power_tree`、`get_clock_tree`、`get_reset_boot_paths` 和 `get_mcu_pin_usage`；图查询 `maxDepth` 最大为 8，每页最大 50 项。
 
 推荐给模型的首条提示：
 
 ```text
 请使用 schemcp 打开我提供的 .epro2 附件，先调用
-list_schematic_projects 和 list_design_hierarchy，再按页查询器件与引脚。
+list_schematic_projects 和 list_design_hierarchy，再按页查询器件、引脚和显式 BUS。
 如果没有 .enet，请把精确工程事实与几何网络候选分开表述。
 ```
 
@@ -260,14 +280,14 @@ node dist/src/bin/schemcp.js
 
 ```bash
 npm pack
-npm install --global ./yuanzihao-schemcp-0.1.0.tgz
+npm install --global ./yuanzihao-schemcp-0.2.0.tgz
 schemcp
 ```
 
 ## 文档与安全
 
 - [MCP 接口说明](docs/MCP_SERVICE.md)
-- [48 个 MCP 工具与 JSON Schema](docs/MCP_TOOLS.md)
+- [54 个 MCP 工具与 JSON Schema](docs/MCP_TOOLS.md)
 - [用户指南](docs/USER_GUIDE.md)
 - [贡献指南](CONTRIBUTING.md)
 - [安全策略](SECURITY.md)

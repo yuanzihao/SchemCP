@@ -31,7 +31,7 @@ interface ParsedManifest {
   readonly schemaVersion: "0.1.0";
   readonly generator: {
     readonly name: "@yuanzihao/schemcp";
-    readonly version: "0.1.0";
+    readonly version: "0.2.0";
   };
   readonly sourceProject: {
     readonly archiveSha256: string;
@@ -186,7 +186,7 @@ function parseManifest(value: unknown): ParsedManifest {
         "@yuanzihao/schemcp",
         "generator.name"
       ),
-      version: literal(generator.version, "0.1.0", "generator.version")
+      version: literal(generator.version, "0.2.0", "generator.version")
     },
     sourceProject: {
       archiveSha256: sha256(

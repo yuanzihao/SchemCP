@@ -100,13 +100,13 @@ for (const relativePath of [
 }
 
 assert.equal(mcpContract.schema, "schemcp.mcp-tools-contract");
-assert.equal(mcpContract.schemaVersion, "1.0.0");
+assert.equal(mcpContract.schemaVersion, "1.1.0");
 assert.equal(mcpContract.server.id, "schemcp");
 assert.equal(mcpContract.server.package, packageJson.name);
 assert.equal(mcpContract.server.version, packageJson.version);
 assert.equal(mcpContract.transport, "stdio");
-assert.equal(mcpContract.toolCount, 48);
-assert.equal(mcpContract.tools.length, 48);
+assert.equal(mcpContract.toolCount, 54);
+assert.equal(mcpContract.tools.length, 54);
 assert.equal(
   mcpContract.tools.every(
     (tool) =>
@@ -116,7 +116,7 @@ assert.equal(
       tool.outputSchema?.required?.includes("ok")
   ),
   true,
-  "48 个工具必须同时公开输入和结果 Schema"
+  "54 个工具必须同时公开输入和结果 Schema"
 );
 assert.equal(
   mcpContract.tools.some((tool) => /pcb|bridge/iu.test(tool.name)),

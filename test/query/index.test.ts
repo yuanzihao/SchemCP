@@ -3,9 +3,13 @@ import test from "node:test";
 import type {
   EdaIr,
   IrAttribute,
+  IrBus,
+  IrBusEntry,
   IrComponent,
+  IrComponentSemantic,
   IrComponentGroup,
   IrInstanceContext,
+  IrInterface,
   IrNetworkEndpointCandidate,
   IrRecordProvenance,
   IrSchematicAnnotation,
@@ -34,6 +38,39 @@ const PROVENANCE: IrRecordProvenance = {
   line: 2
 };
 
+function effectiveState(id: string, pageId: string) {
+  return {
+    assembly: {
+      status: "UNKNOWN" as const,
+      reason: "ADD_INTO_BOM_MISSING" as const,
+      attributeKey: "Add into BOM" as const,
+      values: [],
+      resolution: "MISSING" as const,
+      evidenceClass: "DETERMINISTIC_RULE" as const,
+      truthStatus: "NOT_VERIFIED" as const,
+      semanticRuleSetVersion: "schemcp.semantic-rules/1" as const,
+      provenance: []
+    },
+    pinCompleteness: {
+      logicalComponentId: `logical-${pageId}-${id}`,
+      status: "COMPLETE" as const,
+      reason: "SINGLE_SYMBOL_PART_COMPLETE" as const,
+      units: [{ componentId: id, pageId, partId: "part-a" }],
+      declaredPartIds: ["part-a"],
+      instantiatedPartIds: ["part-a"],
+      missingPartIds: [],
+      duplicatePartIds: [],
+      symbolPinCount: 2,
+      instantiatedPinCount: 2,
+      hiddenPinCount: 0,
+      evidenceClass: "DETERMINISTIC_RULE" as const,
+      truthStatus: "NOT_VERIFIED" as const,
+      semanticRuleSetVersion: "schemcp.semantic-rules/1" as const,
+      provenance: []
+    }
+  };
+}
+
 function component(
   id: string,
   designator: string,
@@ -59,6 +96,7 @@ function component(
       state: "UNRESOLVED_DEVICE_REFERENCE_MISSING",
       componentAttributes: []
     },
+    ...effectiveState(id, pageId),
     attributes: [],
     provenance: { ...PROVENANCE, documentId: pageId, recordId: id },
     extensions: { easyeda: {} }
@@ -376,13 +414,24 @@ function fixture(): EdaIr {
   const instanceContexts: IrInstanceContext[] = [
     {
       id: "schematic-a_$5|block-a_$1",
+      pathEncoding: "OFFICIAL_SHEET_NUMBER_PIPE_BLOCK_ID",
       schematicId: "schematic-a",
-      blockPath: [{ sheetNumber: "5", blockSymbolId: "block-a" }],
+      blockPath: [
+        {
+          pageReference: "5",
+          sheetNumber: "5",
+          blockSymbolId: "block-a",
+          resolutionStatus: "SOURCE_PAGE_NOT_FOUND"
+        }
+      ],
+      terminalPageReference: "1",
       terminalSheetNumber: "1",
+      resolutionStatus: "SOURCE_PAGE_NOT_FOUND",
       overrides: [
         {
           targetPrimitiveId: "component-2",
           attributes: { Value: "10k" },
+          applicationStatus: "CONTEXT_NOT_RESOLVED",
           provenance: {
             ...PROVENANCE,
             documentId: "schematic-a_$5|block-a_$1",
@@ -398,10 +447,10 @@ function fixture(): EdaIr {
   ];
   return {
     schema: "schemcp.eda-ir",
-    schemaVersion: "1.0.0",
+    schemaVersion: "1.1.0",
     generator: {
       name: "@yuanzihao/schemcp",
-      version: "0.1.0"
+      version: "0.2.0"
     },
     source: {
       format: "EASYEDA_V3_LOG",
@@ -420,13 +469,20 @@ function fixture(): EdaIr {
     variants,
     componentGroups,
     instanceContexts,
+    componentOccurrences: [],
     components,
+    componentSemantics: [],
+    interfaces: [],
+    resourceNodes: [],
+    resourceEdges: [],
     symbols,
     symbolParts: [],
     symbolTexts: [],
     symbolPins,
     devices: [],
     wires,
+    buses: [],
+    busEntries: [],
     pinInstances: pinCompilation.pinInstances,
     shortRelations: [],
     networkEndpointCandidates: [],
@@ -487,8 +543,42 @@ function fixture(): EdaIr {
       instanceContexts: instanceContexts.length,
       instanceDocumentsWithInvalidPath: 0,
       instanceContextsWithMissingSchematic: 0,
+      instanceContextsResolved: 0,
+      instanceContextsUnresolved: 1,
       instanceAttributeOverrides: 1,
+      instanceAttributeOverridesAppliedToComponents: 0,
+      instanceAttributeOverridesAppliedToPins: 0,
+      instanceAttributeOverridesUnresolved: 1,
+      componentOccurrences: 0,
+      componentOccurrencesPopulated: 0,
+      componentOccurrencesDnp: 0,
+      componentOccurrencesAssemblyUnknown: 0,
       components: components.length,
+      componentsPopulated: 0,
+      componentsDnp: 0,
+      componentsAssemblyUnknown: components.length,
+      componentsPinCompletenessComplete: components.length,
+      componentsPinCompletenessPartial: 0,
+      componentsPinCompletenessUnknown: 0,
+      componentSemantics: 0,
+      componentSemanticsUnknownRole: 0,
+      componentPowerDomainCandidates: 0,
+      interfaces: 0,
+      interfacesCandidate: 0,
+      interfacesPartialCandidate: 0,
+      interfacesUnresolved: 0,
+      interfacesActive: 0,
+      interfacesExcludedDnp: 0,
+      interfacesAssemblyUnknown: 0,
+      resourceNodes: 0,
+      resourceEdges: 0,
+      resourceEdgesPower: 0,
+      resourceEdgesClock: 0,
+      resourceEdgesResetBoot: 0,
+      resourceEdgesMcuPin: 0,
+      resourceEdgesActive: 0,
+      resourceEdgesExcludedDnp: 0,
+      resourceEdgesAssemblyUnknown: 0,
       componentsWithDesignator: components.length,
       componentsWithDevice: 0,
       componentsWithSymbol: components.length,
@@ -507,10 +597,19 @@ function fixture(): EdaIr {
       symbolTextsWithPartNotFound: 0,
       symbolPins: symbolPins.length,
       symbolPinsWithNumber: symbolPins.length,
+      symbolPinsHidden: 0,
       devices: 0,
       wires: wires.length,
       wiresWithExplicitNet: wires.length,
       wireSegments: wires.length,
+      buses: 0,
+      busesWithExplicitNet: 0,
+      busesWithEmptyEntrySet: 0,
+      busSegments: 0,
+      busEntries: 0,
+      busEntriesEmbedded: 0,
+      busEntriesSeparate: 0,
+      busEntriesUnbound: 0,
       pinInstances: pinCompilation.summary.pinInstances,
       pinInstancesWithUniqueExplicitNetCandidate:
         pinCompilation.summary.uniqueExplicitNetCandidates,
@@ -545,6 +644,223 @@ function fixture(): EdaIr {
       unmodeledRecords: 0
     },
     irSha256: "c".repeat(64)
+  };
+}
+
+function occurrenceFixture(): EdaIr {
+  const base = fixture();
+  const contextId = "schematic-a_$page-root~block-a_$page-a";
+  const overrideProvenance: IrRecordProvenance = {
+    ...PROVENANCE,
+    documentId: contextId,
+    documentType: "INSTANCE",
+    recordType: "INSTANCE_ATTR",
+    recordId: "component-1"
+  };
+  return {
+    ...base,
+    instanceContexts: [
+      ...base.instanceContexts,
+      {
+        id: contextId,
+        pathEncoding: "OBSERVED_PAGE_ID_TILDE_BLOCK_ID",
+        schematicId: "schematic-a",
+        blockPath: [
+          {
+            pageReference: "page-root",
+            blockSymbolId: "block-a",
+            sourcePageId: "page-root",
+            targetPageId: "page-a",
+            resolutionStatus: "RESOLVED_EXACT"
+          }
+        ],
+        terminalPageReference: "page-a",
+        terminalPageId: "page-a",
+        resolutionStatus: "RESOLVED_EXACT",
+        overrides: [
+          {
+            targetPrimitiveId: "component-1",
+            attributes: { Designator: "R101", Value: "10k" },
+            applicationStatus: "APPLIED_COMPONENT_OCCURRENCE",
+            resolvedTarget: {
+              kind: "COMPONENT",
+              pageId: "page-a",
+              componentId: "component-1"
+            },
+            provenance: overrideProvenance,
+            extensions: { easyeda: {} }
+          }
+        ],
+        provenance: [{ client: "client", entry: "epru", line: 10 }]
+      }
+    ],
+    componentOccurrences: [
+      {
+        id: "occurrence-1",
+        instanceContextId: contextId,
+        schematicId: "schematic-a",
+        pageId: "page-a",
+        componentId: "component-1",
+        designator: "R101",
+        attributes: [
+          {
+            key: "Designator",
+            values: ["R101"],
+            resolution: "INSTANCE_OVERRIDE",
+            provenance: [overrideProvenance]
+          },
+          {
+            key: "Value",
+            values: ["10k"],
+            resolution: "INSTANCE_OVERRIDE",
+            provenance: [overrideProvenance]
+          }
+        ],
+        pinOverrides: [
+          {
+            symbolPinId: "pin-1",
+            attributes: { NO_CONNECT: "yes" },
+            provenance: {
+              ...overrideProvenance,
+              recordId: "component-1pin-1"
+            }
+          }
+        ],
+        assembly: {
+          status: "UNKNOWN",
+          reason: "ADD_INTO_BOM_MISSING",
+          attributeKey: "Add into BOM",
+          values: [],
+          resolution: "MISSING",
+          evidenceClass: "DETERMINISTIC_RULE",
+          truthStatus: "NOT_VERIFIED",
+          semanticRuleSetVersion: "schemcp.semantic-rules/1",
+          provenance: []
+        },
+        pinCompleteness: {
+          ...base.components[0]!.pinCompleteness,
+          logicalComponentId: "occurrence-logical"
+        },
+        populationStatus: "UNKNOWN",
+        pathTruth: "EXPLICIT_INSTANCE_DOCUMENT_RESOLVED",
+        electricalTruth: "NOT_VERIFIED"
+      }
+    ],
+    summary: {
+      ...base.summary,
+      instanceContexts: base.instanceContexts.length + 1,
+      instanceContextsResolved: 1,
+      componentOccurrences: 1,
+      componentOccurrencesAssemblyUnknown: 1
+    }
+  };
+}
+
+function semanticsFixture(): EdaIr {
+  const base = fixture();
+  const selected = base.components.find((item) => item.id === "component-1")!;
+  const second = base.components.find((item) => item.id === "component-2")!;
+  const semantic: IrComponentSemantic = {
+    id: "semantic-component-1",
+    componentId: selected.id,
+    pageId: selected.pageId,
+    logicalComponentId: selected.pinCompleteness.logicalComponentId,
+    unitComponentIds: [selected.id],
+    primaryRole: "MCU_MPU",
+    roles: [
+      {
+        role: "MCU_MPU",
+        ruleId: "component-role.mcu-mpu.identity.v1",
+        evidenceClass: "DETERMINISTIC_RULE",
+        truthStatus: "CANDIDATE",
+        semanticRuleSetVersion: "schemcp.semantic-rules/1",
+        provenance: [selected.provenance]
+      }
+    ],
+    powerDomains: [],
+    ruleId: "component.semantic.aggregate.v1",
+    evidenceClass: "DETERMINISTIC_RULE",
+    truthStatus: "CANDIDATE",
+    semanticRuleSetVersion: "schemcp.semantic-rules/1",
+    provenance: [selected.provenance]
+  };
+  const interfaceBase = {
+    group: "SWD",
+    signals: [
+      {
+        signal: "SWDIO",
+        pinInstanceIds: ["component-1:pin-1"],
+        pinNames: ["SWDIO"],
+        explicitNetNames: [],
+        provenance: [selected.provenance]
+      },
+      {
+        signal: "SWCLK",
+        pinInstanceIds: ["component-1:pin-2"],
+        pinNames: ["SWCLK"],
+        explicitNetNames: [],
+        provenance: [selected.provenance]
+      }
+    ],
+    requiredSignals: ["SWDIO", "SWCLK"],
+    missingSignals: [],
+    unresolvedReasons: [],
+    ruleId: "interface.swd.signal-set.v1",
+    evidenceClass: "DETERMINISTIC_RULE" as const,
+    truthStatus: "CANDIDATE" as const,
+    semanticRuleSetVersion: "schemcp.semantic-rules/1" as const,
+    provenance: [selected.provenance]
+  };
+  const interfaces: IrInterface[] = [
+    {
+      id: "interface-swd",
+      type: "SWD",
+      logicalComponentId: selected.pinCompleteness.logicalComponentId,
+      componentRefs: [{ componentId: selected.id, pageId: selected.pageId }],
+      status: "CANDIDATE",
+      activityStatus: "ACTIVE",
+      ...interfaceBase
+    },
+    {
+      id: "interface-usb-dnp",
+      type: "USB",
+      group: "USB:FS",
+      logicalComponentId: second.pinCompleteness.logicalComponentId,
+      componentRefs: [{ componentId: second.id, pageId: second.pageId }],
+      status: "PARTIAL_CANDIDATE",
+      activityStatus: "EXCLUDED_DNP",
+      signals: [
+        {
+          signal: "DP",
+          pinInstanceIds: ["component-2:pin-1"],
+          pinNames: ["USB_DP"],
+          explicitNetNames: [],
+          provenance: [second.provenance]
+        }
+      ],
+      requiredSignals: ["DP", "DM"],
+      missingSignals: ["DM"],
+      unresolvedReasons: [],
+      ruleId: "interface.usb.signal-set.v1",
+      evidenceClass: "DETERMINISTIC_RULE",
+      truthStatus: "CANDIDATE",
+      semanticRuleSetVersion: "schemcp.semantic-rules/1",
+      provenance: [second.provenance]
+    }
+  ];
+  return {
+    ...base,
+    componentSemantics: [semantic],
+    interfaces,
+    summary: {
+      ...base.summary,
+      componentSemantics: 1,
+      interfaces: 2,
+      interfacesCandidate: 1,
+      interfacesPartialCandidate: 1,
+      interfacesActive: 1,
+      interfacesExcludedDnp: 1
+    }
   };
 }
 
@@ -833,6 +1149,122 @@ function symbolTextFixture(): EdaIr {
   };
 }
 
+function busFixture(): EdaIr {
+  const base = fixture();
+  const buses: readonly IrBus[] = [
+    {
+      id: "bus-a",
+      pageId: "page-a",
+      encoding: "OBSERVED_EMBEDDED_BUSENTRY_MAP",
+      explicitNetName: "DATA[7:0]",
+      segments: [],
+      entryIds: ["entry-a", "entry-b"],
+      attributes: [],
+      memberExpansion: "NOT_PERFORMED",
+      evidenceClass: "EXPLICIT_PROJECT_RECORD",
+      truthStatus: "NOT_VERIFIED",
+      provenance: {
+        ...PROVENANCE,
+        recordType: "BUS",
+        recordId: "bus-a"
+      },
+      extensions: { easyeda: {} }
+    },
+    {
+      id: "bus-b",
+      pageId: "page-b",
+      encoding: "OFFICIAL_DOTS_WITH_SEPARATE_BUSENTRY_RECORDS",
+      explicitNetName: "CTRL[1:0]",
+      segments: [],
+      entryIds: [],
+      attributes: [],
+      memberExpansion: "NOT_PERFORMED",
+      evidenceClass: "EXPLICIT_PROJECT_RECORD",
+      truthStatus: "NOT_VERIFIED",
+      provenance: {
+        ...PROVENANCE,
+        documentId: "page-b",
+        recordType: "BUS",
+        recordId: "bus-b"
+      },
+      extensions: { easyeda: {} }
+    }
+  ];
+  const busEntries: readonly IrBusEntry[] = [
+    {
+      id: "entry-b",
+      pageId: "page-a",
+      busId: "bus-a",
+      encoding: "OBSERVED_EMBEDDED_BUSENTRY_MAP_ITEM",
+      associationStatus: "EMBEDDED_IN_BUS_RECORD",
+      order: 1,
+      point: { x: 20, y: 10 },
+      rotation: 0,
+      evidenceClass: "EXPLICIT_PROJECT_RECORD",
+      truthStatus: "NOT_VERIFIED",
+      provenance: {
+        ...PROVENANCE,
+        recordType: "BUS",
+        recordId: "bus-a"
+      },
+      extensions: { easyeda: {} }
+    },
+    {
+      id: "entry-a",
+      pageId: "page-a",
+      busId: "bus-a",
+      encoding: "OBSERVED_EMBEDDED_BUSENTRY_MAP_ITEM",
+      associationStatus: "EMBEDDED_IN_BUS_RECORD",
+      order: 0,
+      point: { x: 10, y: 10 },
+      rotation: 0,
+      evidenceClass: "EXPLICIT_PROJECT_RECORD",
+      truthStatus: "NOT_VERIFIED",
+      provenance: {
+        ...PROVENANCE,
+        recordType: "BUS",
+        recordId: "bus-a"
+      },
+      extensions: { easyeda: {} }
+    },
+    {
+      id: "entry-unbound",
+      pageId: "page-b",
+      encoding: "OFFICIAL_SEPARATE_BUSENTRY_RECORD",
+      associationStatus: "SEPARATE_RECORD_WITHOUT_EXPLICIT_BUS_ID",
+      order: 0,
+      busGroupId: 3,
+      point: { x: 0, y: 0 },
+      rotation: 180,
+      evidenceClass: "EXPLICIT_PROJECT_RECORD",
+      truthStatus: "NOT_VERIFIED",
+      provenance: {
+        ...PROVENANCE,
+        documentId: "page-b",
+        recordType: "BUSENTRY",
+        recordId: "entry-unbound"
+      },
+      extensions: { easyeda: {} }
+    }
+  ];
+  return {
+    ...base,
+    buses,
+    busEntries,
+    summary: {
+      ...base.summary,
+      buses: buses.length,
+      busesWithExplicitNet: buses.length,
+      busesWithEmptyEntrySet: 1,
+      busSegments: 0,
+      busEntries: busEntries.length,
+      busEntriesEmbedded: 2,
+      busEntriesSeparate: 1,
+      busEntriesUnbound: 1
+    }
+  };
+}
+
 
 
 
@@ -876,6 +1308,176 @@ test("组件列表具有确定排序、有界分页和筛选域绑定 cursor", (
     () => index.listComponents({ limit: 51 }),
     (error) => error instanceof QueryError && error.code === "QUERY_INVALID_LIMIT"
   );
+});
+
+test("组件查询公开 DNP 装配状态、完整性筛选并将 Variant 绑定到游标域", () => {
+  const base = fixture();
+  const components = base.components.map((item, index) => ({
+    ...item,
+    assembly:
+      index === 0
+        ? {
+            status: "DNP" as const,
+            reason: "EXPLICIT_ADD_INTO_BOM_NO" as const,
+            attributeKey: "Add into BOM" as const,
+            values: ["no"],
+            resolution: "COMPONENT_EXPLICIT" as const,
+            evidenceClass: "EXPLICIT_PROJECT_RECORD" as const,
+            truthStatus: "NOT_VERIFIED" as const,
+            semanticRuleSetVersion: "schemcp.semantic-rules/1" as const,
+            provenance: [item.provenance]
+          }
+        : item.assembly
+  }));
+  const index = new EdaIrQueryIndex({ ...base, components });
+
+  const dnp = index.listComponents({ assemblyStatus: "DNP", limit: 1 });
+  assert.equal(dnp.total, 1);
+  assert.equal(dnp.items[0]?.assembly.status, "DNP");
+  assert.equal(dnp.items[0]?.assembly.reason, "EXPLICIT_ADD_INTO_BOM_NO");
+
+  const complete = index.listComponents({
+    pinCompletenessStatus: "COMPLETE"
+  });
+  assert.equal(complete.total, 3);
+
+  const selectedVariant = index.listComponents({
+    variantId: "variant-1",
+    assemblyStatus: "UNKNOWN",
+    limit: 1
+  });
+  assert.equal(selectedVariant.total, 3);
+  assert.equal(
+    selectedVariant.items[0]?.assembly.reason,
+    "VARIANT_APPLICATION_NOT_SUPPORTED"
+  );
+  assert.throws(
+    () => index.listComponents({ variantId: "missing-variant" }),
+    (error: unknown) =>
+      error instanceof QueryError && error.code === "QUERY_INVALID_TEXT"
+  );
+  assert.throws(
+    () =>
+      index.listComponents({
+        variantId: "variant-2",
+        assemblyStatus: "UNKNOWN",
+        limit: 1,
+        cursor: selectedVariant.nextCursor
+      }),
+    (error: unknown) =>
+      error instanceof QueryError && error.code === "QUERY_INVALID_CURSOR"
+  );
+});
+
+test("组件详情公开版本化角色语义，接口默认排除 DNP 并绑定 Variant 游标域", () => {
+  const index = new EdaIrQueryIndex(semanticsFixture());
+  const component = index.getComponent({ componentId: "component-1" });
+  assert.equal(component.status, "FOUND");
+  if (component.status === "FOUND") {
+    assert.equal(component.component.semantic?.primaryRole, "MCU_MPU");
+    assert.equal(
+      component.component.semantic?.semanticRuleSetVersion,
+      "schemcp.semantic-rules/1"
+    );
+  }
+
+  const active = index.listInterfaces({ limit: 1 });
+  assert.equal(active.total, 1);
+  assert.equal(active.items[0]?.type, "SWD");
+  assert.equal(active.items[0]?.activityStatus, "ACTIVE");
+
+  const excluded = index.listInterfaces({
+    activityStatus: "EXCLUDED_DNP",
+    status: "PARTIAL_CANDIDATE"
+  });
+  assert.equal(excluded.total, 1);
+  assert.equal(excluded.items[0]?.type, "USB");
+
+  const selectedVariant = index.listInterfaces({
+    variantId: "variant-1",
+    activityStatus: "ALL",
+    limit: 1
+  });
+  assert.equal(selectedVariant.total, 2);
+  assert.equal(selectedVariant.items[0]?.status, "UNRESOLVED");
+  assert.equal(
+    selectedVariant.items[0]?.activityStatus,
+    "ASSEMBLY_UNKNOWN"
+  );
+  assert.throws(
+    () =>
+      index.listInterfaces({
+        variantId: "variant-2",
+        activityStatus: "ALL",
+        limit: 1,
+        cursor: selectedVariant.nextCursor
+      }),
+    (error: unknown) =>
+      error instanceof QueryError && error.code === "QUERY_INVALID_CURSOR"
+  );
+});
+
+test("组件查询按 INSTANCE 上下文返回有效位号、属性和引脚覆盖", () => {
+  const index = new EdaIrQueryIndex(occurrenceFixture());
+  const contextId = "schematic-a_$page-root~block-a_$page-a";
+  const basePage = index.listComponents({ limit: 1 });
+  assert.ok(basePage.nextCursor);
+
+  const page = index.listComponents({
+    instanceContextId: contextId,
+    designatorContains: "r101"
+  });
+  assert.equal(page.total, 1);
+  assert.equal(page.items[0]?.id, "component-1");
+  assert.equal(page.items[0]?.designator, "R101");
+  assert.equal(page.items[0]?.occurrence?.id, "occurrence-1");
+  assert.equal(page.items[0]?.occurrence?.instanceContextId, contextId);
+  assert.throws(
+    () =>
+      index.listComponents({
+        instanceContextId: contextId,
+        limit: 1,
+        cursor: basePage.nextCursor
+      }),
+    (error: unknown) =>
+      error instanceof QueryError && error.code === "QUERY_INVALID_CURSOR"
+  );
+
+  const lookup = index.getComponent({
+    designator: "R101",
+    instanceContextId: contextId
+  });
+  assert.equal(lookup.status, "FOUND");
+  if (lookup.status !== "FOUND") return;
+  assert.deepEqual(
+    lookup.attributes.find((attribute) => attribute.key === "Value"),
+    {
+      key: "Value",
+      values: ["10k"],
+      resolution: "INSTANCE_OVERRIDE",
+      provenance: [
+        {
+          ...PROVENANCE,
+          documentId: contextId,
+          documentType: "INSTANCE",
+          recordType: "INSTANCE_ATTR",
+          recordId: "component-1"
+        }
+      ]
+    }
+  );
+
+  const pins = index.getComponentPins({
+    componentId: "component-1",
+    instanceContextId: contextId
+  });
+  assert.equal(pins.status, "FOUND");
+  if (pins.status === "FOUND" && "pins" in pins) {
+    assert.deepEqual(pins.pins.items[0]?.occurrenceOverrides?.[0]?.attributes, {
+      NO_CONNECT: "yes"
+    });
+    assert.equal(pins.pins.items[1]?.occurrenceOverrides, undefined);
+  }
 });
 
 test("原理图注释查询保持显式文本、分页筛选和来源证据", () => {
@@ -1309,6 +1911,19 @@ test("工程层级查询按显式父引用分页且 cursor 与筛选域绑定", 
     "EXPLICIT_SCHEMATIC_REFERENCE"
   );
   assert.ok(first.nextCursor);
+  const instances = index.listDesignHierarchy({
+    kind: "INSTANCE_CONTEXT",
+    parentId: "schematic-a"
+  });
+  assert.equal(instances.total, 1);
+  assert.equal(
+    instances.items[0]?.relationshipBasis,
+    "EXPLICIT_INSTANCE_DOCUMENT_PATH"
+  );
+  assert.equal(
+    instances.items[0]?.resolutionStatus,
+    "SOURCE_PAGE_NOT_FOUND"
+  );
   assert.throws(
     () =>
       index.listDesignHierarchy({
@@ -1404,7 +2019,7 @@ test("变体覆盖仅精确匹配 INSTANCE 文档 ID 且不应用目标属性", 
   );
 });
 
-test("INSTANCE 上下文按显式 Schematic 分页并返回未应用原始覆盖", () => {
+test("INSTANCE 上下文按显式 Schematic 分页并返回稳定解析状态", () => {
   const index = new EdaIrQueryIndex(fixture());
   const contexts = index.listInstanceContexts({
     schematicId: "schematic-a",
@@ -1413,12 +2028,22 @@ test("INSTANCE 上下文按显式 Schematic 分页并返回未应用原始覆盖
   assert.equal(contexts.total, 1);
   assert.deepEqual(contexts.items[0], {
     id: "schematic-a_$5|block-a_$1",
+    pathEncoding: "OFFICIAL_SHEET_NUMBER_PIPE_BLOCK_ID",
     schematicId: "schematic-a",
-    blockPath: [{ sheetNumber: "5", blockSymbolId: "block-a" }],
+    blockPath: [
+      {
+        pageReference: "5",
+        sheetNumber: "5",
+        blockSymbolId: "block-a",
+        resolutionStatus: "SOURCE_PAGE_NOT_FOUND"
+      }
+    ],
+    terminalPageReference: "1",
     terminalSheetNumber: "1",
+    resolutionStatus: "SOURCE_PAGE_NOT_FOUND",
     overrideCount: 1,
-    pathBasis: "EXPLICIT_INSTANCE_DOCUMENT_UUID",
-    sheetResolution: "NOT_VERIFIED"
+    occurrenceCount: 0,
+    pathBasis: "OFFICIAL_INSTANCE_DOCUMENT_UUID"
   });
 
   const lookup = index.getInstanceContext({
@@ -1431,9 +2056,9 @@ test("INSTANCE 上下文按显式 Schematic 分页并返回未应用原始覆盖
   assert.deepEqual(lookup.overrides.items[0]?.attributes, { Value: "10k" });
   assert.equal(
     lookup.overrides.items[0]?.applicationStatus,
-    "NOT_APPLIED_TARGET_RESOLUTION_UNVERIFIED"
+    "CONTEXT_NOT_RESOLVED"
   );
-  assert.equal(lookup.targetResolution, "NOT_VERIFIED");
+  assert.equal(lookup.targetResolution, "SOURCE_PAGE_NOT_FOUND");
   assert.equal(
     index.getInstanceContext({ contextId: "missing" }).status,
     "NOT_FOUND"
@@ -1480,6 +2105,43 @@ test("组件引脚返回实例化几何候选但保持电气真值未验证", ()
       ]
     );
     assert.equal(result.pins.items[0]?.endpointKind, "PART_SYMBOL_PIN");
+  }
+});
+
+test("完整多单元逻辑器件查询合并各 PART 的引脚且保留所属组件", () => {
+  const base = fixture();
+  const unitA = base.components[0]!;
+  const unitB = base.components[1]!;
+  const units = [
+    { componentId: unitA.id, pageId: unitA.pageId, partId: "part-a" },
+    { componentId: unitB.id, pageId: unitB.pageId, partId: "part-b" }
+  ];
+  const components = base.components.map((item) =>
+    item.id === unitA.id || item.id === unitB.id
+      ? {
+          ...item,
+          partId: item.id === unitA.id ? "part-a" : "part-b",
+          pinCompleteness: {
+            ...item.pinCompleteness,
+            logicalComponentId: "logical-u1",
+            status: "COMPLETE" as const,
+            reason: "ALL_SYMBOL_PARTS_INSTANTIATED" as const,
+            units,
+            declaredPartIds: ["part-a", "part-b"],
+            instantiatedPartIds: ["part-a", "part-b"]
+          }
+        }
+      : item
+  );
+  const index = new EdaIrQueryIndex({ ...base, components });
+  const result = index.getComponentPins({ componentId: unitA.id });
+  assert.equal(result.status, "FOUND");
+  if (result.status === "FOUND" && "pins" in result) {
+    assert.equal(result.pins.total, 4);
+    assert.deepEqual(
+      [...new Set(result.pins.items.map((item) => item.componentId))].sort(),
+      [unitA.id, unitB.id].sort()
+    );
   }
 });
 
@@ -1547,6 +2209,54 @@ test("显式网络按名称聚合但保持导线标签边界", () => {
       ["GND", 1, ["page-a"], "EXPLICIT_WIRE_LABEL_ONLY"],
       ["VCC", 2, ["page-a", "page-b"], "EXPLICIT_WIRE_LABEL_ONLY"]
     ]
+  );
+});
+
+test("BUS 与 BUSENTRY 分页保留显式顺序、编码并绑定工程筛选域", () => {
+  const ir = busFixture();
+  const index = new EdaIrQueryIndex(ir);
+  const buses = index.listBuses({ netNameContains: "data", limit: 1 });
+  assert.equal(buses.total, 1);
+  assert.equal(buses.items[0]?.id, "bus-a");
+  assert.equal(buses.items[0]?.explicitNetName, "DATA[7:0]");
+  assert.equal(buses.items[0]?.memberExpansion, "NOT_PERFORMED");
+
+  const entries = index.listBusEntries({ busId: "bus-a", limit: 1 });
+  assert.equal(entries.total, 2);
+  assert.equal(entries.items[0]?.id, "entry-a");
+  assert.equal(entries.items[0]?.order, 0);
+  assert.ok(entries.nextCursor);
+  const next = index.listBusEntries({
+    busId: "bus-a",
+    limit: 1,
+    cursor: entries.nextCursor
+  });
+  assert.equal(next.items[0]?.id, "entry-b");
+  assert.equal(
+    index.listBusEntries({
+      associationStatus: "SEPARATE_RECORD_WITHOUT_EXPLICIT_BUS_ID"
+    }).items[0]?.id,
+    "entry-unbound"
+  );
+  assert.equal(index.getEvidence("bus", "bus-a", "page-a").status, "FOUND");
+  assert.equal(
+    index.getEvidence("busEntry", "entry-unbound", "page-b").status,
+    "FOUND"
+  );
+
+  const otherProject = new EdaIrQueryIndex({
+    ...ir,
+    irSha256: "d".repeat(64)
+  });
+  assert.throws(
+    () =>
+      otherProject.listBusEntries({
+        busId: "bus-a",
+        limit: 1,
+        cursor: entries.nextCursor
+      }),
+    (error: unknown) =>
+      error instanceof QueryError && error.code === "QUERY_INVALID_CURSOR"
   );
 });
 

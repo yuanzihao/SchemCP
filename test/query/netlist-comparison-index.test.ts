@@ -24,7 +24,7 @@ const REPORT: NetlistComparisonReport = {
   schemaVersion: "0.1.0",
   generator: {
     name: "@yuanzihao/schemcp",
-      version: "0.1.0"
+      version: "0.2.0"
   },
   sourceProject: {
     archiveSha256: "a".repeat(64),

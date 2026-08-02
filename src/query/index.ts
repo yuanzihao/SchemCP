@@ -1,15 +1,27 @@
 import { createHash } from "node:crypto";
 import { canonicalJson } from "../core/canonical-json.js";
+import { SEMANTIC_RULE_SET_VERSION } from "../semantics/compile-semantics.js";
+import { unresolvedVariantAssembly } from "../variant/effective-component-state.js";
 import type {
   EdaIr,
   IrAttribute,
   IrBoard,
+  IrBus,
+  IrBusEncoding,
+  IrBusEntry,
+  IrBusEntryEncoding,
   IrComponent,
   IrComponentGroup,
   IrComponentLibraryBinding,
+  IrComponentOccurrence,
+  IrComponentSemantic,
   IrDiagnostic,
   IrInstanceAttributeOverride,
   IrInstanceContext,
+  IrInterface,
+  IrInterfaceActivityStatus,
+  IrInterfaceStatus,
+  IrInterfaceType,
   IrNetworkEndpointCandidate,
   IrNetworkEndpointCandidateKind,
   IrNetworkEndpointCandidateStatus,
@@ -104,6 +116,9 @@ export interface ComponentSummary {
   };
   readonly rotation: number;
   readonly mirrored: boolean;
+  readonly assembly: IrComponent["assembly"];
+  readonly pinCompleteness: IrComponent["pinCompleteness"];
+  readonly semantic?: IrComponentSemantic;
   readonly deviceTitle?: string;
   readonly symbolTitle?: string;
   readonly identity?: {
@@ -114,6 +129,17 @@ export interface ComponentSummary {
     readonly unresolvedReasons: readonly UnresolvedComponentReason[];
   };
   readonly datasheetLinkCount: number;
+  readonly occurrence?: {
+    readonly id: string;
+    readonly instanceContextId: string;
+    readonly schematicId: string;
+    readonly sourcePageId: string;
+    readonly assembly: IrComponentOccurrence["assembly"];
+    readonly pinCompleteness: IrComponentOccurrence["pinCompleteness"];
+    readonly populationStatus: IrComponentOccurrence["populationStatus"];
+    readonly pathTruth: IrComponentOccurrence["pathTruth"];
+    readonly electricalTruth: IrComponentOccurrence["electricalTruth"];
+  };
 }
 
 export interface ComponentAttributeSummary {
@@ -122,7 +148,8 @@ export interface ComponentAttributeSummary {
   readonly resolution:
     | "COMPONENT_EXPLICIT"
     | "COMPONENT_CONFLICT"
-    | "DEVICE_DEFAULT";
+    | "DEVICE_DEFAULT"
+    | "INSTANCE_OVERRIDE";
   readonly provenance: readonly IrRecordProvenance[];
 }
 
@@ -131,7 +158,8 @@ export interface ComponentEngineeringLinkSummary {
   readonly url: string;
   readonly source:
     | "COMPONENT_EXPLICIT_ATTRIBUTE"
-    | "DEVICE_DEFAULT_ATTRIBUTE";
+    | "DEVICE_DEFAULT_ATTRIBUTE"
+    | "INSTANCE_OVERRIDE_ATTRIBUTE";
   readonly sourceAuthenticity: "PROJECT_ATTRIBUTE_NOT_VERIFIED";
 }
 
@@ -250,9 +278,12 @@ export interface SymbolTextSummary {
 
 export interface ComponentPinSummary {
   readonly id: string;
+  readonly componentId: string;
+  readonly pageId: string;
   readonly symbolPinId: string;
   readonly symbolId: string;
   readonly partId: string;
+  readonly display?: boolean;
   readonly endpointKind: IrPinEndpointKind;
   readonly symbolType?: number;
   readonly name?: string;
@@ -260,6 +291,10 @@ export interface ComponentPinSummary {
   readonly electricalType?: string | number;
   readonly pinShape?: string | number;
   readonly instanceAttributes: readonly IrAttribute[];
+  readonly occurrenceOverrides?: readonly {
+    readonly attributes: JsonObject;
+    readonly provenance: IrRecordProvenance;
+  }[];
   readonly noConnectDeclaration?: IrPinNoConnectDeclaration;
   readonly connectionPoint: {
     readonly x: number;
@@ -310,21 +345,25 @@ export interface VariantOverrideSummary {
 
 export interface InstanceContextSummary {
   readonly id: string;
+  readonly pathEncoding: IrInstanceContext["pathEncoding"];
   readonly schematicId: string;
-  readonly blockPath: readonly {
-    readonly sheetNumber: string;
-    readonly blockSymbolId: string;
-  }[];
-  readonly terminalSheetNumber: string;
+  readonly blockPath: IrInstanceContext["blockPath"];
+  readonly terminalPageReference: string;
+  readonly terminalSheetNumber?: string;
+  readonly terminalPageId?: string;
+  readonly resolutionStatus: IrInstanceContext["resolutionStatus"];
   readonly overrideCount: number;
-  readonly pathBasis: "EXPLICIT_INSTANCE_DOCUMENT_UUID";
-  readonly sheetResolution: "NOT_VERIFIED";
+  readonly occurrenceCount: number;
+  readonly pathBasis:
+    | "OFFICIAL_INSTANCE_DOCUMENT_UUID"
+    | "OBSERVED_CURRENT_EXPORT_INSTANCE_DOCUMENT_UUID";
 }
 
 export interface InstanceAttributeOverrideSummary {
   readonly targetPrimitiveId: string;
   readonly attributes: JsonObject;
-  readonly applicationStatus: "NOT_APPLIED_TARGET_RESOLUTION_UNVERIFIED";
+  readonly applicationStatus: IrInstanceAttributeOverride["applicationStatus"];
+  readonly resolvedTarget?: IrInstanceAttributeOverride["resolvedTarget"];
   readonly provenance: IrRecordProvenance;
 }
 
@@ -333,7 +372,7 @@ export type InstanceContextLookup =
       readonly status: "FOUND";
       readonly context: InstanceContextSummary;
       readonly overrides: Page<InstanceAttributeOverrideSummary>;
-      readonly targetResolution: "NOT_VERIFIED";
+      readonly targetResolution: IrInstanceContext["resolutionStatus"];
     }
   | {
       readonly status: "NOT_FOUND";
@@ -347,11 +386,40 @@ export interface ExplicitNetSummary {
   readonly connectionStatus: "EXPLICIT_WIRE_LABEL_ONLY";
 }
 
+export interface BusSummary {
+  readonly id: string;
+  readonly pageId: string;
+  readonly encoding: IrBusEncoding;
+  readonly explicitNetName?: string;
+  readonly segmentCount: number;
+  readonly entryCount: number;
+  readonly memberExpansion: "NOT_PERFORMED";
+  readonly evidenceClass: "EXPLICIT_PROJECT_RECORD";
+  readonly truthStatus: "NOT_VERIFIED";
+  readonly provenance: IrRecordProvenance;
+}
+
+export interface BusEntrySummary {
+  readonly id: string;
+  readonly pageId: string;
+  readonly busId?: string;
+  readonly encoding: IrBusEntryEncoding;
+  readonly associationStatus: IrBusEntry["associationStatus"];
+  readonly order: number;
+  readonly busGroupId?: number;
+  readonly point: IrBusEntry["point"];
+  readonly rotation: number;
+  readonly evidenceClass: "EXPLICIT_PROJECT_RECORD";
+  readonly truthStatus: "NOT_VERIFIED";
+  readonly provenance: IrRecordProvenance;
+}
+
 export type DesignHierarchyNodeKind =
   | "PROJECT_CONFIGURATION"
   | "BOARD"
   | "SCHEMATIC"
-  | "SHEET";
+  | "SHEET"
+  | "INSTANCE_CONTEXT";
 
 export interface DesignHierarchyNode {
   readonly kind: DesignHierarchyNodeKind;
@@ -362,8 +430,12 @@ export interface DesignHierarchyNode {
   readonly relationshipBasis:
     | "PROJECT_ARCHIVE_MEMBERSHIP"
     | "EXPLICIT_BOARD_REFERENCE"
-    | "EXPLICIT_SCHEMATIC_REFERENCE";
-  readonly provenance: IrRecordProvenance;
+    | "EXPLICIT_SCHEMATIC_REFERENCE"
+    | "EXPLICIT_INSTANCE_DOCUMENT_PATH";
+  readonly pathEncoding?: IrInstanceContext["pathEncoding"];
+  readonly terminalPageId?: string;
+  readonly resolutionStatus?: IrInstanceContext["resolutionStatus"];
+  readonly provenance: IrRecordProvenance | IrInstanceContext["provenance"];
 }
 
 export interface ComponentLookupFound {
@@ -449,7 +521,9 @@ export interface Evidence {
     | "schematicAnnotation"
     | "schematicGraphicPrimitive"
     | "schematicTable"
-    | "symbolText";
+    | "symbolText"
+    | "bus"
+    | "busEntry";
   readonly objectId: string;
   readonly provenance: IrRecordProvenance;
 }
@@ -477,9 +551,31 @@ interface CursorPayload {
 interface ComponentListOptions {
   readonly pageId?: string | undefined;
   readonly designatorContains?: string | undefined;
+  readonly instanceContextId?: string | undefined;
+  readonly variantId?: string | undefined;
+  readonly assemblyStatus?: IrComponent["assembly"]["status"] | undefined;
+  readonly pinCompletenessStatus?:
+    | IrComponent["pinCompleteness"]["status"]
+    | undefined;
   readonly limit?: number | undefined;
   readonly cursor?: string | undefined;
 }
+
+export interface InterfaceListOptions {
+  readonly type?: IrInterfaceType | undefined;
+  readonly status?: IrInterfaceStatus | undefined;
+  readonly activityStatus?: IrInterfaceActivityStatus | "ALL" | undefined;
+  readonly componentId?: string | undefined;
+  readonly pageId?: string | undefined;
+  readonly instanceContextId?: string | undefined;
+  readonly variantId?: string | undefined;
+  readonly limit?: number | undefined;
+  readonly cursor?: string | undefined;
+}
+
+export type InterfaceSummary = IrInterface & {
+  readonly instanceContextId?: string;
+};
 
 interface SchematicAnnotationListOptions {
   readonly pageId?: string | undefined;
@@ -559,6 +655,24 @@ interface PartMasterDetailOptions {
 
 interface ExplicitNetListOptions {
   readonly nameContains?: string | undefined;
+  readonly limit?: number | undefined;
+  readonly cursor?: string | undefined;
+}
+
+interface BusListOptions {
+  readonly pageId?: string | undefined;
+  readonly busId?: string | undefined;
+  readonly netNameContains?: string | undefined;
+  readonly encoding?: IrBusEncoding | undefined;
+  readonly limit?: number | undefined;
+  readonly cursor?: string | undefined;
+}
+
+interface BusEntryListOptions {
+  readonly pageId?: string | undefined;
+  readonly busId?: string | undefined;
+  readonly encoding?: IrBusEntryEncoding | undefined;
+  readonly associationStatus?: IrBusEntry["associationStatus"] | undefined;
   readonly limit?: number | undefined;
   readonly cursor?: string | undefined;
 }
@@ -731,6 +845,8 @@ function componentEngineeringLinks(
                 source:
                   attribute.resolution === "DEVICE_DEFAULT"
                     ? ("DEVICE_DEFAULT_ATTRIBUTE" as const)
+                    : attribute.resolution === "INSTANCE_OVERRIDE"
+                      ? ("INSTANCE_OVERRIDE_ATTRIBUTE" as const)
                     : ("COMPONENT_EXPLICIT_ATTRIBUTE" as const),
                 sourceAuthenticity:
                   "PROJECT_ATTRIBUTE_NOT_VERIFIED" as const
@@ -743,7 +859,10 @@ function componentEngineeringLinks(
 function summarizeComponent(
   component: IrComponent,
   ir: EdaIr,
-  identities: ReadonlyMap<string, UnresolvedComponentSummary>
+  identities: ReadonlyMap<string, UnresolvedComponentSummary>,
+  semantics: ReadonlyMap<string, IrComponentSemantic>,
+  occurrence?: IrComponentOccurrence,
+  variantId?: string
 ): ComponentSummary {
   const identity = identities.get(`${component.pageId}\n${component.id}`);
   const device =
@@ -754,12 +873,23 @@ function summarizeComponent(
     component.symbolId === undefined
       ? undefined
       : ir.symbols.find((item) => item.id === component.symbolId);
-  const attributes = componentAttributes(component, device);
+  const attributes =
+    occurrence?.attributes ?? componentAttributes(component, device);
+  const effectiveDesignator = occurrence?.designator ?? component.designator;
+  const assembly =
+    variantId === undefined
+      ? (occurrence?.assembly ?? component.assembly)
+      : unresolvedVariantAssembly(occurrence?.assembly ?? component.assembly);
+  const pinCompleteness =
+    occurrence?.pinCompleteness ?? component.pinCompleteness;
+  const semantic = semantics.get(`${component.pageId}\n${component.id}`);
   return {
     id: component.id,
     pageId: component.pageId,
     partId: component.partId,
-    ...(component.designator === undefined ? {} : { designator: component.designator }),
+    ...(effectiveDesignator === undefined
+      ? {}
+      : { designator: effectiveDesignator }),
     ...(component.deviceId === undefined ? {} : { deviceId: component.deviceId }),
     ...(component.symbolId === undefined ? {} : { symbolId: component.symbolId }),
     ...(component.footprintId === undefined
@@ -770,6 +900,9 @@ function summarizeComponent(
     position: component.position,
     rotation: component.rotation,
     mirrored: component.mirrored,
+    assembly,
+    pinCompleteness,
+    ...(semantic === undefined ? {} : { semantic }),
     ...(device?.title === undefined
       ? {}
       : { deviceTitle: device.title }),
@@ -796,7 +929,22 @@ function summarizeComponent(
             unresolvedReasons: identity.reasons
           }
         }),
-    datasheetLinkCount: componentEngineeringLinks(attributes).length
+    datasheetLinkCount: componentEngineeringLinks(attributes).length,
+    ...(occurrence === undefined
+      ? {}
+      : {
+          occurrence: {
+            id: occurrence.id,
+            instanceContextId: occurrence.instanceContextId,
+            schematicId: occurrence.schematicId,
+            sourcePageId: occurrence.pageId,
+            assembly,
+            pinCompleteness,
+            populationStatus: assembly.status,
+            pathTruth: occurrence.pathTruth,
+            electricalTruth: occurrence.electricalTruth
+          }
+        })
   };
 }
 
@@ -913,12 +1061,24 @@ function summarizeSymbolText(item: IrSymbolText): SymbolTextSummary {
   };
 }
 
-function summarizePin(pin: IrPinInstance): ComponentPinSummary {
+function summarizePin(
+  pin: IrPinInstance,
+  occurrence?: IrComponentOccurrence
+): ComponentPinSummary {
+  const occurrenceOverrides = occurrence?.pinOverrides
+    .filter((override) => override.symbolPinId === pin.symbolPinId)
+    .map((override) => ({
+      attributes: override.attributes,
+      provenance: override.provenance
+    }));
   return {
     id: pin.id,
+    componentId: pin.componentId,
+    pageId: pin.pageId,
     symbolPinId: pin.symbolPinId,
     symbolId: pin.symbolId,
     partId: pin.partId,
+    ...(pin.display === undefined ? {} : { display: pin.display }),
     endpointKind: pin.endpointKind,
     ...(pin.symbolType === undefined ? {} : { symbolType: pin.symbolType }),
     ...(pin.name === undefined ? {} : { name: pin.name }),
@@ -928,6 +1088,9 @@ function summarizePin(pin: IrPinInstance): ComponentPinSummary {
       : { electricalType: pin.electricalType }),
     ...(pin.pinShape === undefined ? {} : { pinShape: pin.pinShape }),
     instanceAttributes: pin.instanceAttributes,
+    ...(occurrenceOverrides === undefined || occurrenceOverrides.length === 0
+      ? {}
+      : { occurrenceOverrides }),
     ...(pin.noConnectDeclaration === undefined
       ? {}
       : { noConnectDeclaration: pin.noConnectDeclaration }),
@@ -992,16 +1155,28 @@ function summarizeVariantGroup(
 }
 
 function summarizeInstanceContext(
-  context: IrInstanceContext
+  context: IrInstanceContext,
+  occurrenceCount: number
 ): InstanceContextSummary {
   return {
     id: context.id,
+    pathEncoding: context.pathEncoding,
     schematicId: context.schematicId,
     blockPath: context.blockPath,
-    terminalSheetNumber: context.terminalSheetNumber,
+    terminalPageReference: context.terminalPageReference,
+    ...(context.terminalSheetNumber === undefined
+      ? {}
+      : { terminalSheetNumber: context.terminalSheetNumber }),
+    ...(context.terminalPageId === undefined
+      ? {}
+      : { terminalPageId: context.terminalPageId }),
+    resolutionStatus: context.resolutionStatus,
     overrideCount: context.overrides.length,
-    pathBasis: "EXPLICIT_INSTANCE_DOCUMENT_UUID",
-    sheetResolution: "NOT_VERIFIED"
+    occurrenceCount,
+    pathBasis:
+      context.pathEncoding === "OFFICIAL_SHEET_NUMBER_PIPE_BLOCK_ID"
+        ? "OFFICIAL_INSTANCE_DOCUMENT_UUID"
+        : "OBSERVED_CURRENT_EXPORT_INSTANCE_DOCUMENT_UUID"
   };
 }
 
@@ -1011,8 +1186,47 @@ function summarizeInstanceOverride(
   return {
     targetPrimitiveId: override.targetPrimitiveId,
     attributes: override.attributes,
-    applicationStatus: "NOT_APPLIED_TARGET_RESOLUTION_UNVERIFIED",
+    applicationStatus: override.applicationStatus,
+    ...(override.resolvedTarget === undefined
+      ? {}
+      : { resolvedTarget: override.resolvedTarget }),
     provenance: override.provenance
+  };
+}
+
+function summarizeBus(bus: IrBus): BusSummary {
+  return {
+    id: bus.id,
+    pageId: bus.pageId,
+    encoding: bus.encoding,
+    ...(bus.explicitNetName === undefined
+      ? {}
+      : { explicitNetName: bus.explicitNetName }),
+    segmentCount: bus.segments.length,
+    entryCount: bus.entryIds.length,
+    memberExpansion: bus.memberExpansion,
+    evidenceClass: bus.evidenceClass,
+    truthStatus: bus.truthStatus,
+    provenance: bus.provenance
+  };
+}
+
+function summarizeBusEntry(entry: IrBusEntry): BusEntrySummary {
+  return {
+    id: entry.id,
+    pageId: entry.pageId,
+    ...(entry.busId === undefined ? {} : { busId: entry.busId }),
+    encoding: entry.encoding,
+    associationStatus: entry.associationStatus,
+    order: entry.order,
+    ...(entry.busGroupId === undefined
+      ? {}
+      : { busGroupId: entry.busGroupId }),
+    point: entry.point,
+    rotation: entry.rotation,
+    evidenceClass: entry.evidenceClass,
+    truthStatus: entry.truthStatus,
+    provenance: entry.provenance
   };
 }
 
@@ -1074,6 +1288,23 @@ function schematicPageNode(page: IrSchematicPage): DesignHierarchyNode {
         ? "PROJECT_ARCHIVE_MEMBERSHIP"
         : "EXPLICIT_SCHEMATIC_REFERENCE",
     provenance: page.provenance
+  };
+}
+
+function instanceContextNode(
+  context: IrInstanceContext
+): DesignHierarchyNode {
+  return {
+    kind: "INSTANCE_CONTEXT",
+    id: context.id,
+    parentId: context.schematicId,
+    relationshipBasis: "EXPLICIT_INSTANCE_DOCUMENT_PATH",
+    pathEncoding: context.pathEncoding,
+    ...(context.terminalPageId === undefined
+      ? {}
+      : { terminalPageId: context.terminalPageId }),
+    resolutionStatus: context.resolutionStatus,
+    provenance: context.provenance
   };
 }
 
@@ -1183,6 +1414,10 @@ export class EdaIrQueryIndex {
     string,
     UnresolvedComponentSummary
   >;
+  private readonly componentSemantics: ReadonlyMap<
+    string,
+    IrComponentSemantic
+  >;
   private readonly unresolvedComponentSummary: UnresolvedComponentInventorySummary;
   private readonly partMasters: readonly PartMasterRecord[];
   private readonly partMastersById: ReadonlyMap<string, PartMasterRecord>;
@@ -1191,10 +1426,15 @@ export class EdaIrQueryIndex {
   private readonly componentGroups: readonly IrComponentGroup[];
   private readonly instanceContexts: readonly IrInstanceContext[];
   private readonly instanceContextsById: ReadonlyMap<string, IrInstanceContext>;
+  private readonly componentOccurrences: readonly IrComponentOccurrence[];
+  private readonly componentOccurrenceCountByContext: ReadonlyMap<string, number>;
   private readonly componentsById: ReadonlyMap<string, readonly IrComponent[]>;
   private readonly componentsByDesignator: ReadonlyMap<string, readonly IrComponent[]>;
   private readonly pinsByComponent: ReadonlyMap<string, readonly IrPinInstance[]>;
   private readonly explicitNets: readonly ExplicitNetSummary[];
+  private readonly buses: readonly IrBus[];
+  private readonly busEntries: readonly IrBusEntry[];
+  private readonly interfaces: readonly IrInterface[];
   private readonly candidateNetlist: CandidateTupleCompilation;
   private readonly networkEndpointCandidates: readonly IrNetworkEndpointCandidate[];
   private readonly shortRelations: readonly IrShortRelationCandidate[];
@@ -1205,13 +1445,15 @@ export class EdaIrQueryIndex {
       PROJECT_CONFIGURATION: 0,
       BOARD: 1,
       SCHEMATIC: 2,
-      SHEET: 3
+      SHEET: 3,
+      INSTANCE_CONTEXT: 4
     };
     this.designHierarchy = [
       ...ir.projectConfigurations.map(projectConfigurationNode),
       ...ir.boards.map(boardNode),
       ...ir.schematics.map(schematicNode),
-      ...ir.schematicPages.map(schematicPageNode)
+      ...ir.schematicPages.map(schematicPageNode),
+      ...ir.instanceContexts.map(instanceContextNode)
     ].sort(
       (left, right) =>
         kindOrder[left.kind] - kindOrder[right.kind] ||
@@ -1270,6 +1512,12 @@ export class EdaIrQueryIndex {
         item
       ])
     );
+    this.componentSemantics = new Map(
+      ir.componentSemantics.map((semantic) => [
+        `${semantic.pageId}\n${semantic.componentId}`,
+        semantic
+      ])
+    );
     this.unresolvedComponents = identityInventory.items.filter(
       (item) => item.reasons.length > 0
     );
@@ -1302,12 +1550,47 @@ export class EdaIrQueryIndex {
     this.instanceContextsById = new Map(
       this.instanceContexts.map((context) => [context.id, context])
     );
+    this.componentOccurrences = [...ir.componentOccurrences].sort(
+      (left, right) =>
+        compareText(left.instanceContextId, right.instanceContextId) ||
+        compareText(left.designator ?? "", right.designator ?? "") ||
+        compareText(left.pageId, right.pageId) ||
+        compareText(left.componentId, right.componentId)
+    );
+    const componentOccurrenceCountByContext = new Map<string, number>();
+    for (const occurrence of this.componentOccurrences) {
+      componentOccurrenceCountByContext.set(
+        occurrence.instanceContextId,
+        (componentOccurrenceCountByContext.get(occurrence.instanceContextId) ??
+          0) + 1
+      );
+    }
+    this.componentOccurrenceCountByContext = componentOccurrenceCountByContext;
     this.componentsById = this.groupComponents((component) => component.id);
     this.componentsByDesignator = this.groupComponents(
       (component) => component.designator
     );
     this.pinsByComponent = this.groupPins();
     this.explicitNets = this.buildExplicitNets();
+    this.buses = [...ir.buses].sort(
+      (left, right) =>
+        compareText(left.pageId, right.pageId) ||
+        compareText(left.id, right.id)
+    );
+    this.busEntries = [...ir.busEntries].sort(
+      (left, right) =>
+        compareText(left.pageId, right.pageId) ||
+        compareText(left.busId ?? "", right.busId ?? "") ||
+        left.order - right.order ||
+        compareText(left.id, right.id) ||
+        compareText(left.encoding, right.encoding)
+    );
+    this.interfaces = [...ir.interfaces].sort(
+      (left, right) =>
+        compareText(left.type, right.type) ||
+        compareText(left.group, right.group) ||
+        compareText(left.id, right.id)
+    );
     this.candidateNetlist = compileCandidateNetlistTuples(ir.pinInstances);
     this.networkEndpointCandidates = [...ir.networkEndpointCandidates].sort(
       (left, right) =>
@@ -1340,24 +1623,82 @@ export class EdaIrQueryIndex {
 
   public listComponents(options: ComponentListOptions = {}): Page<ComponentSummary> {
     const pageId = validateText(options.pageId, "pageId");
+    const instanceContextId = validateText(
+      options.instanceContextId,
+      "instanceContextId"
+    );
+    const variantId = validateText(options.variantId, "variantId");
+    this.assertVariantExists(variantId);
     const designatorContains = validateText(
       options.designatorContains,
       "designatorContains"
     );
     const needle = designatorContains?.toLocaleLowerCase("en-US");
-    const filtered = this.components
-      .filter((component) => pageId === undefined || component.pageId === pageId)
+    const candidates: readonly {
+      readonly component: IrComponent;
+      readonly occurrence?: IrComponentOccurrence;
+    }[] =
+      instanceContextId === undefined
+        ? this.components.map((component) => ({ component }))
+        : this.componentOccurrences
+            .filter(
+              (occurrence) =>
+                occurrence.instanceContextId === instanceContextId
+            )
+            .flatMap((occurrence) => {
+              const component = this.findComponent(
+                occurrence.componentId,
+                occurrence.pageId
+              );
+              return component === undefined
+                ? []
+                : [{ component, occurrence }];
+            });
+    const filtered = candidates
       .filter(
-        (component) =>
-          needle === undefined ||
-          component.designator?.toLocaleLowerCase("en-US").includes(needle) === true
+        ({ component }) =>
+          pageId === undefined || component.pageId === pageId
       )
-      .map((component) =>
-        summarizeComponent(component, this.ir, this.componentIdentities)
+      .filter(
+        ({ component, occurrence }) =>
+          needle === undefined ||
+          (occurrence?.designator ?? component.designator)
+            ?.toLocaleLowerCase("en-US")
+            .includes(needle) === true
+      )
+      .filter(({ component, occurrence }) => {
+        const assembly =
+          variantId === undefined
+            ? (occurrence?.assembly ?? component.assembly)
+            : unresolvedVariantAssembly(
+                occurrence?.assembly ?? component.assembly
+              );
+        const completeness =
+          occurrence?.pinCompleteness ?? component.pinCompleteness;
+        return (
+          (options.assemblyStatus === undefined ||
+            assembly.status === options.assemblyStatus) &&
+          (options.pinCompletenessStatus === undefined ||
+            completeness.status === options.pinCompletenessStatus)
+        );
+      })
+      .map(({ component, occurrence }) =>
+        summarizeComponent(
+          component,
+          this.ir,
+          this.componentIdentities,
+          this.componentSemantics,
+          occurrence,
+          variantId
+        )
       );
     const scope = scopeHash("components", {
       pageId: pageId ?? "",
-      designatorContains: needle ?? ""
+      designatorContains: needle ?? "",
+      instanceContextId: instanceContextId ?? "",
+      variantId: variantId ?? "",
+      assemblyStatus: options.assemblyStatus ?? "",
+      pinCompletenessStatus: options.pinCompletenessStatus ?? ""
     });
     return paginate(filtered, options.limit, options.cursor, scope);
   }
@@ -1679,7 +2020,12 @@ export class EdaIrQueryIndex {
         (context) =>
           schematicId === undefined || context.schematicId === schematicId
       )
-      .map(summarizeInstanceContext);
+      .map((context) =>
+        summarizeInstanceContext(
+          context,
+          this.componentOccurrenceCountByContext.get(context.id) ?? 0
+        )
+      );
     const scope = scopeHash("instance-contexts", {
       schematicId: schematicId ?? ""
     });
@@ -1697,14 +2043,17 @@ export class EdaIrQueryIndex {
     const scope = scopeHash("instance-context-overrides", { contextId });
     return {
       status: "FOUND",
-      context: summarizeInstanceContext(context),
+      context: summarizeInstanceContext(
+        context,
+        this.componentOccurrenceCountByContext.get(context.id) ?? 0
+      ),
       overrides: paginate(
         context.overrides.map(summarizeInstanceOverride),
         options.limit,
         options.cursor,
         scope
       ),
-      targetResolution: "NOT_VERIFIED"
+      targetResolution: context.resolutionStatus
     };
   }
 
@@ -1712,21 +2061,57 @@ export class EdaIrQueryIndex {
     readonly componentId?: string | undefined;
     readonly designator?: string | undefined;
     readonly pageId?: string | undefined;
+    readonly instanceContextId?: string | undefined;
+    readonly variantId?: string | undefined;
   }): ComponentLookup {
     const componentId = validateText(query.componentId, "componentId");
     const designator = validateText(query.designator, "designator");
     const pageId = validateText(query.pageId, "pageId");
+    const instanceContextId = validateText(
+      query.instanceContextId,
+      "instanceContextId"
+    );
+    const variantId = validateText(query.variantId, "variantId");
+    this.assertVariantExists(variantId);
     if ((componentId === undefined) === (designator === undefined)) {
       throw new QueryError(
         "QUERY_INVALID_TEXT",
         "必须且只能指定 componentId 或 designator 之一。"
       );
     }
-    const candidates = [
-      ...(componentId === undefined
-        ? (this.componentsByDesignator.get(designator as string) ?? [])
-        : (this.componentsById.get(componentId) ?? []))
-    ].filter((component) => pageId === undefined || component.pageId === pageId);
+    const candidates: readonly {
+      readonly component: IrComponent;
+      readonly occurrence?: IrComponentOccurrence;
+    }[] =
+      instanceContextId === undefined
+        ? [
+            ...(componentId === undefined
+              ? (this.componentsByDesignator.get(designator as string) ?? [])
+              : (this.componentsById.get(componentId) ?? []))
+          ]
+            .filter(
+              (component) =>
+                pageId === undefined || component.pageId === pageId
+            )
+            .map((component) => ({ component }))
+        : this.componentOccurrences
+            .filter(
+              (occurrence) =>
+                occurrence.instanceContextId === instanceContextId &&
+                (componentId === undefined
+                  ? occurrence.designator === designator
+                  : occurrence.componentId === componentId) &&
+                (pageId === undefined || occurrence.pageId === pageId)
+            )
+            .flatMap((occurrence) => {
+              const component = this.findComponent(
+                occurrence.componentId,
+                occurrence.pageId
+              );
+              return component === undefined
+                ? []
+                : [{ component, occurrence }];
+            });
     if (candidates.length === 0) {
       return { status: "NOT_FOUND" };
     }
@@ -1736,25 +2121,37 @@ export class EdaIrQueryIndex {
         total: candidates.length,
         candidates: candidates
           .slice(0, QUERY_LIMITS.maxPageSize)
-          .map((component) =>
+          .map(({ component, occurrence }) =>
             summarizeComponent(
               component,
               this.ir,
-              this.componentIdentities
+              this.componentIdentities,
+              this.componentSemantics,
+              occurrence,
+              variantId
             )
           )
       };
     }
-    const selected = candidates[0] as IrComponent;
+    const selectedCandidate = candidates[0] as {
+      readonly component: IrComponent;
+      readonly occurrence?: IrComponentOccurrence;
+    };
+    const selected = selectedCandidate.component;
+    const occurrence = selectedCandidate.occurrence;
     const device =
       selected.deviceId === undefined
         ? undefined
         : this.ir.devices.find((item) => item.id === selected.deviceId);
-    const attributes = componentAttributes(selected, device);
+    const attributes: readonly ComponentAttributeSummary[] =
+      occurrence?.attributes ?? componentAttributes(selected, device);
     const summary = summarizeComponent(
       selected,
       this.ir,
-      this.componentIdentities
+      this.componentIdentities,
+      this.componentSemantics,
+      occurrence,
+      variantId
     );
     return {
       status: "FOUND",
@@ -1840,6 +2237,8 @@ export class EdaIrQueryIndex {
     readonly componentId?: string | undefined;
     readonly designator?: string | undefined;
     readonly pageId?: string | undefined;
+    readonly instanceContextId?: string | undefined;
+    readonly variantId?: string | undefined;
     readonly limit?: number | undefined;
     readonly cursor?: string | undefined;
   }): ComponentLookup | {
@@ -1852,7 +2251,10 @@ export class EdaIrQueryIndex {
     if (lookup.status !== "FOUND") {
       return lookup;
     }
-    const component = this.findComponent(lookup.component.id, lookup.component.pageId);
+    const component = this.findComponent(
+      lookup.component.id,
+      lookup.component.pageId
+    );
     if (component === undefined) {
       return {
         status: "FOUND",
@@ -1861,12 +2263,47 @@ export class EdaIrQueryIndex {
         connectionTruth: "NOT_VERIFIED"
       };
     }
-    const pins = (
-      this.pinsByComponent.get(`${component.pageId}\n${component.id}`) ?? []
-    ).map(summarizePin);
+    const occurrence =
+      lookup.component.occurrence === undefined
+        ? undefined
+        : this.componentOccurrences.find(
+            (candidate) =>
+              candidate.id === lookup.component.occurrence?.id
+          );
+    const completeness =
+      occurrence?.pinCompleteness ?? component.pinCompleteness;
+    const unitComponents =
+      occurrence !== undefined || completeness.status === "UNKNOWN"
+        ? [component]
+        : completeness.units.flatMap((unit) => {
+            const candidate = this.findComponent(unit.componentId, unit.pageId);
+            return candidate === undefined ? [] : [candidate];
+          });
+    const pins = unitComponents
+      .flatMap((unit) =>
+        (
+          this.pinsByComponent.get(`${unit.pageId}\n${unit.id}`) ?? []
+        ).map((pin) =>
+          summarizePin(
+            pin,
+            occurrence?.componentId === unit.id &&
+              occurrence.pageId === unit.pageId
+              ? occurrence
+              : undefined
+          )
+        )
+      )
+      .sort(
+        (left, right) =>
+          compareText(left.pageId, right.pageId) ||
+          compareText(left.partId, right.partId) ||
+          compareText(left.number ?? "", right.number ?? "") ||
+          compareText(left.id, right.id)
+      );
     const scope = scopeHash("component-pins", {
-      pageId: component.pageId,
-      componentId: component.id
+      logicalComponentId: completeness.logicalComponentId,
+      instanceContextId: lookup.component.occurrence?.instanceContextId ?? "",
+      variantId: query.variantId ?? ""
     });
     return {
       status: "FOUND",
@@ -1874,6 +2311,123 @@ export class EdaIrQueryIndex {
       pins: paginate(pins, query.limit, query.cursor, scope),
       connectionTruth: "NOT_VERIFIED"
     };
+  }
+
+  public listInterfaces(
+    options: InterfaceListOptions = {}
+  ): Page<InterfaceSummary> {
+    const componentId = validateText(options.componentId, "componentId");
+    const pageId = validateText(options.pageId, "pageId");
+    const instanceContextId = validateText(
+      options.instanceContextId,
+      "instanceContextId"
+    );
+    const variantId = validateText(options.variantId, "variantId");
+    this.assertVariantExists(variantId);
+    const occurrences =
+      instanceContextId === undefined
+        ? []
+        : this.componentOccurrences.filter(
+            (occurrence) =>
+              occurrence.instanceContextId === instanceContextId
+          );
+    const occurrenceByComponent = new Map(
+      occurrences.map((occurrence) => [
+        `${occurrence.pageId}\n${occurrence.componentId}`,
+        occurrence
+      ])
+    );
+    const requestedActivity = options.activityStatus ?? "ACTIVE";
+    const filtered = this.interfaces
+      .filter(
+        (item) =>
+          (componentId === undefined ||
+            item.componentRefs.some(
+              (component) => component.componentId === componentId
+            )) &&
+          (pageId === undefined ||
+            item.componentRefs.some((component) => component.pageId === pageId)) &&
+          (options.type === undefined || item.type === options.type)
+      )
+      .filter(
+        (item) =>
+          instanceContextId === undefined ||
+          item.componentRefs.some((component) =>
+            occurrenceByComponent.has(
+              `${component.pageId}\n${component.componentId}`
+            )
+          )
+      )
+      .map((item): InterfaceSummary => {
+        const matchingOccurrences = item.componentRefs.flatMap((component) => {
+          const occurrence = occurrenceByComponent.get(
+            `${component.pageId}\n${component.componentId}`
+          );
+          return occurrence === undefined ? [] : [occurrence];
+        });
+        let activityStatus = item.activityStatus;
+        let status = item.status;
+        const unresolvedReasons = new Set(item.unresolvedReasons);
+        if (instanceContextId !== undefined) {
+          const statuses = new Set(
+            matchingOccurrences.map((occurrence) => occurrence.assembly.status)
+          );
+          if (
+            matchingOccurrences.length === item.componentRefs.length &&
+            statuses.size === 1 &&
+            statuses.has("DNP")
+          ) {
+            activityStatus = "EXCLUDED_DNP";
+          } else if (
+            matchingOccurrences.length === item.componentRefs.length &&
+            statuses.size === 1 &&
+            statuses.has("POPULATED")
+          ) {
+            activityStatus = "ACTIVE";
+          } else {
+            activityStatus = "ASSEMBLY_UNKNOWN";
+          }
+          if (
+            matchingOccurrences.some(
+              (occurrence) => occurrence.pinCompleteness.status === "UNKNOWN"
+            )
+          ) {
+            unresolvedReasons.add("PIN_COMPLETENESS_UNKNOWN");
+          }
+        }
+        if (variantId !== undefined) activityStatus = "ASSEMBLY_UNKNOWN";
+        if (activityStatus === "ASSEMBLY_UNKNOWN") {
+          status = "UNRESOLVED";
+          unresolvedReasons.add("ASSEMBLY_UNKNOWN");
+        }
+        return {
+          ...item,
+          status,
+          activityStatus,
+          unresolvedReasons: [...unresolvedReasons].sort(compareText),
+          truthStatus:
+            status === "UNRESOLVED" ? "UNRESOLVED" : "CANDIDATE",
+          ...(instanceContextId === undefined ? {} : { instanceContextId })
+        };
+      })
+      .filter(
+        (item) =>
+          (options.status === undefined || item.status === options.status) &&
+          (requestedActivity === "ALL" ||
+            item.activityStatus === requestedActivity)
+      );
+    const scope = scopeHash("interfaces", {
+      project: this.ir.irSha256,
+      type: options.type ?? "",
+      status: options.status ?? "",
+      activityStatus: requestedActivity,
+      componentId: componentId ?? "",
+      pageId: pageId ?? "",
+      instanceContextId: instanceContextId ?? "",
+      variantId: variantId ?? "",
+      semanticRuleSetVersion: SEMANTIC_RULE_SET_VERSION
+    });
+    return paginate(filtered, options.limit, options.cursor, scope);
   }
 
   public listExplicitNets(options: ExplicitNetListOptions = {}): Page<ExplicitNetSummary> {
@@ -1884,6 +2438,63 @@ export class EdaIrQueryIndex {
         needle === undefined || net.name.toLocaleLowerCase("en-US").includes(needle)
     );
     const scope = scopeHash("explicit-nets", { nameContains: needle ?? "" });
+    return paginate(filtered, options.limit, options.cursor, scope);
+  }
+
+  public listBuses(options: BusListOptions = {}): Page<BusSummary> {
+    const pageId = validateText(options.pageId, "pageId");
+    const busId = validateText(options.busId, "busId");
+    const netNameContains = validateText(
+      options.netNameContains,
+      "netNameContains"
+    );
+    const needle = netNameContains?.toLocaleLowerCase("en-US");
+    const filtered = this.buses
+      .filter(
+        (bus) =>
+          (pageId === undefined || bus.pageId === pageId) &&
+          (busId === undefined || bus.id === busId) &&
+          (options.encoding === undefined ||
+            bus.encoding === options.encoding) &&
+          (needle === undefined ||
+            bus.explicitNetName
+              ?.toLocaleLowerCase("en-US")
+              .includes(needle) === true)
+      )
+      .map(summarizeBus);
+    const scope = scopeHash("buses", {
+      project: this.ir.irSha256,
+      pageId: pageId ?? "",
+      busId: busId ?? "",
+      netNameContains: needle ?? "",
+      encoding: options.encoding ?? ""
+    });
+    return paginate(filtered, options.limit, options.cursor, scope);
+  }
+
+  public listBusEntries(
+    options: BusEntryListOptions = {}
+  ): Page<BusEntrySummary> {
+    const pageId = validateText(options.pageId, "pageId");
+    const busId = validateText(options.busId, "busId");
+    const filtered = this.busEntries
+      .filter(
+        (entry) =>
+          (pageId === undefined || entry.pageId === pageId) &&
+          (busId === undefined || entry.busId === busId) &&
+          (options.encoding === undefined ||
+            entry.encoding === options.encoding) &&
+          (options.associationStatus === undefined ||
+            entry.associationStatus === options.associationStatus)
+      )
+      .map(summarizeBusEntry);
+    const scope = scopeHash("bus-entries", {
+      project: this.ir.irSha256,
+      pageId: pageId ?? "",
+      busId: busId ?? "",
+      encoding: options.encoding ?? "",
+      associationStatus: options.associationStatus ?? ""
+    });
     return paginate(filtered, options.limit, options.cursor, scope);
   }
 
@@ -2058,6 +2669,18 @@ export class EdaIrQueryIndex {
     };
   }
 
+  private assertVariantExists(variantId: string | undefined): void {
+    if (
+      variantId !== undefined &&
+      !this.variants.some((variant) => variant.id === variantId)
+    ) {
+      throw new QueryError(
+        "QUERY_INVALID_TEXT",
+        "variantId 未引用当前工程中的 Variant。"
+      );
+    }
+  }
+
   private groupsForVariant(variantId: string): readonly IrComponentGroup[] {
     return this.componentGroups
       .filter(
@@ -2201,6 +2824,20 @@ export class EdaIrQueryIndex {
         objectType: "wire",
         objectId: wire.id,
         provenance: wire.provenance
+      });
+    }
+    for (const bus of this.buses) {
+      add({
+        objectType: "bus",
+        objectId: bus.id,
+        provenance: bus.provenance
+      });
+    }
+    for (const entry of this.busEntries) {
+      add({
+        objectType: "busEntry",
+        objectId: entry.id,
+        provenance: entry.provenance
       });
     }
     for (const group of evidence.values()) {

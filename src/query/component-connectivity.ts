@@ -1,6 +1,13 @@
 import { createHash } from "node:crypto";
 import type { DatasheetStoreQueryIndex } from "../datasheet/query-index.js";
 import type {
+  IrComponentPowerDomainCandidate,
+  IrRecordProvenance,
+  IrResourceEdgeKind,
+  IrResourceType,
+  IrSemanticTruthStatus
+} from "../ir/model.js";
+import type {
   JlcEdaProEnet,
   JlcEdaProEnetComponent,
   JlcEdaProEnetPin
@@ -68,6 +75,86 @@ export interface DirectComponentConnection {
     readonly component?: ComponentSummary;
   };
   readonly propagation: "DIRECT_SAME_NET_ONLY";
+  readonly electricalTruth: "NOT_VERIFIED";
+}
+
+export type McuPinUsageStatus =
+  | "USED_BOUND_NETLIST"
+  | "USED_CANDIDATE"
+  | "UNUSED_CONFIRMED"
+  | "UNKNOWN";
+
+export type McuPinResourceStatus =
+  | "USED"
+  | "EXPLICIT_NC"
+  | "UNUSED"
+  | "UNKNOWN"
+  | "DNP_COMPONENT";
+
+export type McuPinUnresolvedReason =
+  | "VARIANT_SCOPE_NOT_PROVEN"
+  | "ASSEMBLY_STATUS_UNKNOWN"
+  | "PIN_COMPLETENESS_NOT_COMPLETE"
+  | "NETLIST_NOT_ATTACHED"
+  | "PIN_NUMBER_MISSING"
+  | "PIN_NOT_PRESENT_IN_BOUND_NETLIST"
+  | "NO_EXPLICIT_CONNECTION_EVIDENCE";
+
+export interface McuPinUsageItem {
+  readonly logicalComponentId: string;
+  readonly component: ComponentSummary;
+  readonly pin: ComponentPinSummary;
+  readonly status: McuPinResourceStatus;
+  readonly usageStatus: McuPinUsageStatus;
+  readonly usageBasis:
+    | "USER_BOUND_NETLIST_CONNECTED"
+    | "USER_BOUND_NETLIST_UNCONNECTED"
+    | "EXPLICIT_PROJECT_NO_CONNECT"
+    | "EXPLICIT_NET_CONNECTION_CANDIDATE"
+    | "INSUFFICIENT_EVIDENCE";
+  readonly boundNetlistPinName?: string;
+  readonly boundNetName?: string;
+  readonly interfaceSignals: readonly {
+    readonly type: string;
+    readonly group: string;
+    readonly signal: string;
+  }[];
+  readonly powerDomains: readonly IrComponentPowerDomainCandidate[];
+  readonly resourceRoles: readonly {
+    readonly edgeId: string;
+    readonly resourceType: IrResourceType;
+    readonly kind: IrResourceEdgeKind;
+    readonly activityStatus: string;
+    readonly status: "CANDIDATE" | "UNRESOLVED";
+    readonly ruleId: string;
+    readonly evidenceClass: "DETERMINISTIC_RULE";
+    readonly truthStatus: IrSemanticTruthStatus;
+  }[];
+  readonly unresolvedReasons: readonly McuPinUnresolvedReason[];
+  readonly evidenceClass:
+    | "EXPLICIT_PROJECT_RECORD"
+    | "USER_BOUND_NETLIST"
+    | "DETERMINISTIC_RULE";
+  readonly truthStatus: IrSemanticTruthStatus;
+  readonly semanticRuleSetVersion: "schemcp.semantic-rules/1";
+  readonly provenance: readonly IrRecordProvenance[];
+}
+
+export interface McuPinUsageQuery extends ComponentSelector {
+  readonly instanceContextId?: string | undefined;
+  readonly variantId?: string | undefined;
+  readonly status?: McuPinResourceStatus | undefined;
+  readonly usageStatus?: McuPinUsageStatus | undefined;
+  readonly limit?: number | undefined;
+  readonly cursor?: string | undefined;
+}
+
+export interface McuPinUsageResult {
+  readonly mcuCount: number;
+  readonly netlistBinding: "BOUND" | "NOT_BOUND";
+  readonly unusedAssertionGate:
+    "REQUIRES_COMPLETE_PIN_MODEL_BASE_VARIANT_AND_EXPLICIT_NC_OR_BOUND_UNCONNECTED";
+  readonly pins: Page<McuPinUsageItem>;
   readonly electricalTruth: "NOT_VERIFIED";
 }
 
@@ -166,7 +253,10 @@ function boundComponent(
 
 function allComponentPins(
   index: EdaIrQueryIndex,
-  selector: ComponentSelector
+  selector: ComponentSelector & {
+    readonly instanceContextId?: string | undefined;
+    readonly variantId?: string | undefined;
+  }
 ): readonly ComponentPinSummary[] {
   const items: ComponentPinSummary[] = [];
   let cursor: string | undefined;
@@ -229,6 +319,283 @@ export class ComponentConnectivityQuery {
     private readonly comparison?: NetlistComparisonQueryIndex,
     private readonly datasheets?: DatasheetStoreQueryIndex
   ) {}
+
+  public getMcuPinUsage(input: McuPinUsageQuery = {}): McuPinUsageResult {
+    const semanticByLogicalId = new Map(
+      this.index.ir.componentSemantics
+        .filter((item) => item.primaryRole === "MCU_MPU")
+        .map((item) => [item.logicalComponentId, item])
+    );
+    let selectedLogicalIds = [...semanticByLogicalId.keys()].sort(compareText);
+    if (
+      input.componentId !== undefined ||
+      input.designator !== undefined ||
+      input.pageId !== undefined
+    ) {
+      const lookup = this.index.getComponent({
+        componentId: input.componentId,
+        designator: input.designator,
+        pageId: input.pageId,
+        instanceContextId: input.instanceContextId,
+        variantId: input.variantId
+      });
+      if (lookup.status !== "FOUND") {
+        throw new QueryError(
+          "QUERY_INVALID_TEXT",
+          lookup.status === "AMBIGUOUS"
+            ? "MCU 选择器存在歧义，请补充 pageId 或 componentId。"
+            : "MCU 选择器未命中组件。"
+        );
+      }
+      const logicalId = lookup.component.semantic?.logicalComponentId;
+      if (
+        lookup.component.semantic?.primaryRole !== "MCU_MPU" ||
+        logicalId === undefined
+      ) {
+        throw new QueryError("QUERY_INVALID_TEXT", "所选组件不是 MCU_MPU 候选。");
+      }
+      selectedLogicalIds = [logicalId];
+    }
+
+    const interfaceSignalsByPin = new Map<
+      string,
+      { readonly type: string; readonly group: string; readonly signal: string }[]
+    >();
+    for (const item of this.index.ir.interfaces) {
+      for (const signal of item.signals) {
+        for (const pinId of signal.pinInstanceIds) {
+          const values = interfaceSignalsByPin.get(pinId) ?? [];
+          values.push({ type: item.type, group: item.group, signal: signal.signal });
+          interfaceSignalsByPin.set(pinId, values);
+        }
+      }
+    }
+    const pinProvenance = new Map(
+      this.index.ir.pinInstances.map((pin) => [
+        pin.id,
+        [pin.provenance.component, pin.provenance.symbolPin] as const
+      ])
+    );
+    const powerDomainsByLogicalId = new Map<
+      string,
+      IrComponentPowerDomainCandidate[]
+    >();
+    for (const item of this.index.ir.componentSemantics) {
+      const values = powerDomainsByLogicalId.get(item.logicalComponentId) ?? [];
+      for (const domain of item.powerDomains) {
+        if (!values.some((value) => value.id === domain.id)) values.push(domain);
+      }
+      powerDomainsByLogicalId.set(item.logicalComponentId, values);
+    }
+    const resourceRolesByPin = new Map<
+      string,
+      McuPinUsageItem["resourceRoles"][number][]
+    >();
+    for (const edge of this.index.ir.resourceEdges) {
+      for (const pinId of edge.pinInstanceIds) {
+        const values = resourceRolesByPin.get(pinId) ?? [];
+        values.push({
+          edgeId: edge.id,
+          resourceType: edge.resourceType,
+          kind: edge.kind,
+          activityStatus: edge.activityStatus,
+          status: edge.status,
+          ruleId: edge.ruleId,
+          evidenceClass: edge.evidenceClass,
+          truthStatus: edge.truthStatus
+        });
+        resourceRolesByPin.set(pinId, values);
+      }
+    }
+    const items: McuPinUsageItem[] = [];
+    let mcuCount = 0;
+    for (const logicalComponentId of selectedLogicalIds) {
+      const semantic = semanticByLogicalId.get(logicalComponentId);
+      if (semantic === undefined) continue;
+      const representative = this.index.ir.components.find(
+        (item) =>
+          item.id === semantic.componentId && item.pageId === semantic.pageId
+      );
+      if (representative === undefined) continue;
+      const lookup = this.index.getComponent({
+        componentId: representative.id,
+        pageId: representative.pageId,
+        instanceContextId: input.instanceContextId,
+        variantId: input.variantId
+      });
+      if (lookup.status !== "FOUND") continue;
+      mcuCount += 1;
+      const pins = allComponentPins(this.index, {
+        componentId: representative.id,
+        pageId: representative.pageId,
+        instanceContextId: input.instanceContextId,
+        variantId: input.variantId
+      });
+      const netlistComponent = boundComponent(
+        this.comparison?.netlist,
+        lookup.component.designator
+      );
+      const netlistPins = new Map(
+        (netlistComponent?.pins ?? []).map((pin) => [pin.number, pin])
+      );
+      const unusedGateOpen =
+        input.variantId === undefined &&
+        lookup.component.assembly.status === "POPULATED" &&
+        lookup.component.pinCompleteness.status === "COMPLETE";
+      for (const pin of pins) {
+        const boundPin =
+          pin.number === undefined ? undefined : netlistPins.get(pin.number);
+        let usageStatus: McuPinUsageStatus = "UNKNOWN";
+        let status: McuPinResourceStatus = "UNKNOWN";
+        let usageBasis: McuPinUsageItem["usageBasis"] =
+          "INSUFFICIENT_EVIDENCE";
+        let evidenceClass: McuPinUsageItem["evidenceClass"] =
+          "DETERMINISTIC_RULE";
+        let truthStatus: IrSemanticTruthStatus = "UNRESOLVED";
+        if (lookup.component.assembly.status === "DNP") {
+          status = "DNP_COMPONENT";
+          evidenceClass = lookup.component.assembly.evidenceClass;
+          truthStatus = "NOT_VERIFIED";
+        } else if (
+          unusedGateOpen &&
+          pin.connectionCandidate.status === "DECLARED_NO_CONNECT"
+        ) {
+          status = "EXPLICIT_NC";
+          usageStatus = "UNUSED_CONFIRMED";
+          usageBasis = "EXPLICIT_PROJECT_NO_CONNECT";
+          evidenceClass = "EXPLICIT_PROJECT_RECORD";
+          truthStatus = "NOT_VERIFIED";
+        } else if (unusedGateOpen && boundPin?.net === "") {
+          status = "UNUSED";
+          usageStatus = "UNUSED_CONFIRMED";
+          usageBasis = "USER_BOUND_NETLIST_UNCONNECTED";
+          evidenceClass = "USER_BOUND_NETLIST";
+          truthStatus = "NOT_VERIFIED";
+        } else if (boundPin !== undefined && boundPin.net !== "") {
+          status = "USED";
+          usageStatus = "USED_BOUND_NETLIST";
+          usageBasis = "USER_BOUND_NETLIST_CONNECTED";
+          evidenceClass = "USER_BOUND_NETLIST";
+          truthStatus = "NOT_VERIFIED";
+        } else if (
+          pin.connectionCandidate.status === "UNIQUE_EXPLICIT_NET_CANDIDATE"
+        ) {
+          status = "USED";
+          usageStatus = "USED_CANDIDATE";
+          usageBasis = "EXPLICIT_NET_CONNECTION_CANDIDATE";
+          evidenceClass = "DETERMINISTIC_RULE";
+          truthStatus = "CANDIDATE";
+        }
+        const interfaceSignals = [
+          ...(interfaceSignalsByPin.get(pin.id) ?? [])
+        ].sort(
+          (left, right) =>
+            compareText(left.type, right.type) ||
+            compareText(left.group, right.group) ||
+            compareText(left.signal, right.signal)
+        );
+        const powerDomains = [...(powerDomainsByLogicalId.get(logicalComponentId) ?? [])]
+          .filter((item) => item.pinInstanceIds.includes(pin.id))
+          .sort((left, right) => compareText(left.id, right.id));
+        const resourceRoles = [...(resourceRolesByPin.get(pin.id) ?? [])].sort(
+          (left, right) =>
+            compareText(left.resourceType, right.resourceType) ||
+            compareText(left.kind, right.kind) ||
+            compareText(left.edgeId, right.edgeId)
+        );
+        const unresolvedReasons: McuPinUnresolvedReason[] = [];
+        if (status === "UNKNOWN") {
+          if (input.variantId !== undefined) {
+            unresolvedReasons.push("VARIANT_SCOPE_NOT_PROVEN");
+          }
+          if (lookup.component.assembly.status === "UNKNOWN") {
+            unresolvedReasons.push("ASSEMBLY_STATUS_UNKNOWN");
+          }
+          if (lookup.component.pinCompleteness.status !== "COMPLETE") {
+            unresolvedReasons.push("PIN_COMPLETENESS_NOT_COMPLETE");
+          }
+          if (this.comparison?.netlist === undefined) {
+            unresolvedReasons.push("NETLIST_NOT_ATTACHED");
+          }
+          if (pin.number === undefined) {
+            unresolvedReasons.push("PIN_NUMBER_MISSING");
+          } else if (
+            this.comparison?.netlist !== undefined &&
+            boundPin === undefined
+          ) {
+            unresolvedReasons.push("PIN_NOT_PRESENT_IN_BOUND_NETLIST");
+          }
+          if (
+            pin.connectionCandidate.status !==
+              "UNIQUE_EXPLICIT_NET_CANDIDATE" &&
+            pin.connectionCandidate.status !== "DECLARED_NO_CONNECT"
+          ) {
+            unresolvedReasons.push("NO_EXPLICIT_CONNECTION_EVIDENCE");
+          }
+        }
+        items.push({
+          logicalComponentId,
+          component: lookup.component,
+          pin,
+          status,
+          usageStatus,
+          usageBasis,
+          ...(boundPin?.name === undefined
+            ? {}
+            : { boundNetlistPinName: boundPin.name }),
+          ...(boundPin?.net === undefined || boundPin.net === ""
+            ? {}
+            : { boundNetName: boundPin.net }),
+          interfaceSignals,
+          powerDomains,
+          resourceRoles,
+          unresolvedReasons,
+          evidenceClass,
+          truthStatus,
+          semanticRuleSetVersion: "schemcp.semantic-rules/1",
+          provenance: pinProvenance.get(pin.id) ?? []
+        });
+      }
+    }
+    const filtered = items
+      .filter(
+        (item) =>
+          (input.status === undefined || item.status === input.status) &&
+          (input.usageStatus === undefined || item.usageStatus === input.usageStatus)
+      )
+      .sort(
+        (left, right) =>
+          compareText(left.logicalComponentId, right.logicalComponentId) ||
+          compareText(left.pin.pageId, right.pin.pageId) ||
+          compareText(left.pin.partId, right.pin.partId) ||
+          compareText(left.pin.number ?? "", right.pin.number ?? "") ||
+          compareText(left.pin.id, right.pin.id)
+      );
+    const scope = scopeHash(
+      "mcu-pin-usage",
+      JSON.stringify([
+        this.index.ir.irSha256,
+        this.comparison?.report.reportSha256 ?? "",
+        input.componentId ?? "",
+        input.designator ?? "",
+        input.pageId ?? "",
+        input.instanceContextId ?? "",
+        input.variantId ?? "",
+        input.status ?? "",
+        input.usageStatus ?? "",
+        "schemcp.semantic-rules/1"
+      ])
+    );
+    return {
+      mcuCount,
+      netlistBinding:
+        this.comparison?.netlist === undefined ? "NOT_BOUND" : "BOUND",
+      unusedAssertionGate:
+        "REQUIRES_COMPLETE_PIN_MODEL_BASE_VARIANT_AND_EXPLICIT_NC_OR_BOUND_UNCONNECTED",
+      pins: paginate(filtered, input.limit, input.cursor, scope),
+      electricalTruth: "NOT_VERIFIED"
+    };
+  }
 
   public getPinConnectivity(input: ComponentSelector & {
     readonly limit?: number | undefined;

@@ -290,24 +290,179 @@ export interface IrComponentGroup {
 }
 
 export interface IrInstanceBlockPathSegment {
-  readonly sheetNumber: string;
+  readonly pageReference: string;
   readonly blockSymbolId: string;
+  readonly sheetNumber?: string;
+  readonly sourcePageId?: string;
+  readonly targetPageId?: string;
+  readonly resolutionStatus:
+    | "RESOLVED_EXACT"
+    | "SOURCE_PAGE_NOT_FOUND"
+    | "SOURCE_PAGE_AMBIGUOUS"
+    | "SOURCE_PAGE_SCHEMATIC_MISMATCH"
+    | "BLOCK_COMPONENT_NOT_FOUND"
+    | "BLOCK_COMPONENT_AMBIGUOUS"
+    | "BLOCK_SYMBOL_REFERENCE_UNRESOLVED"
+    | "BLOCK_SYMBOL_TYPE_MISMATCH"
+    | "TARGET_PAGE_NOT_FOUND"
+    | "TARGET_PAGE_AMBIGUOUS"
+    | "TARGET_PAGE_SCHEMATIC_MISMATCH"
+    | "PAGE_CYCLE_DETECTED";
 }
+
+export type IrInstanceAttributeApplicationStatus =
+  | "APPLIED_COMPONENT_OCCURRENCE"
+  | "APPLIED_PIN_OCCURRENCE"
+  | "CONTEXT_NOT_RESOLVED"
+  | "TARGET_NOT_FOUND"
+  | "TARGET_PIN_NOT_FOUND"
+  | "TARGET_AMBIGUOUS";
 
 export interface IrInstanceAttributeOverride {
   readonly targetPrimitiveId: string;
   readonly attributes: JsonObject;
+  readonly applicationStatus: IrInstanceAttributeApplicationStatus;
+  readonly resolvedTarget?:
+    | {
+        readonly kind: "COMPONENT";
+        readonly pageId: string;
+        readonly componentId: string;
+      }
+    | {
+        readonly kind: "PIN";
+        readonly pageId: string;
+        readonly componentId: string;
+        readonly symbolPinId: string;
+      };
   readonly provenance: IrRecordProvenance;
   readonly extensions: IrEasyEdaExtension;
 }
 
 export interface IrInstanceContext {
   readonly id: string;
+  readonly pathEncoding:
+    | "OFFICIAL_SHEET_NUMBER_PIPE_BLOCK_ID"
+    | "OBSERVED_PAGE_ID_TILDE_BLOCK_ID";
   readonly schematicId: string;
   readonly blockPath: readonly IrInstanceBlockPathSegment[];
-  readonly terminalSheetNumber: string;
+  readonly terminalPageReference: string;
+  readonly terminalSheetNumber?: string;
+  readonly terminalPageId?: string;
+  readonly resolutionStatus:
+    | "RESOLVED_EXACT"
+    | "SCHEMATIC_NOT_FOUND"
+    | "SOURCE_PAGE_NOT_FOUND"
+    | "SOURCE_PAGE_AMBIGUOUS"
+    | "SOURCE_PAGE_SCHEMATIC_MISMATCH"
+    | "BLOCK_COMPONENT_NOT_FOUND"
+    | "BLOCK_COMPONENT_AMBIGUOUS"
+    | "BLOCK_SYMBOL_REFERENCE_UNRESOLVED"
+    | "BLOCK_SYMBOL_TYPE_MISMATCH"
+    | "TERMINAL_PAGE_NOT_FOUND"
+    | "TERMINAL_PAGE_AMBIGUOUS"
+    | "TERMINAL_PAGE_SCHEMATIC_MISMATCH"
+    | "PAGE_CYCLE_DETECTED";
   readonly overrides: readonly IrInstanceAttributeOverride[];
   readonly provenance: readonly IrDocumentHeaderProvenance[];
+}
+
+export interface IrEffectiveAttribute {
+  readonly key: string;
+  readonly values: readonly JsonValue[];
+  readonly resolution:
+    | "DEVICE_DEFAULT"
+    | "COMPONENT_EXPLICIT"
+    | "COMPONENT_CONFLICT"
+    | "INSTANCE_OVERRIDE";
+  readonly provenance: readonly IrRecordProvenance[];
+}
+
+export type IrComponentAssemblyStatus = "POPULATED" | "DNP" | "UNKNOWN";
+
+export type IrComponentAssemblyReason =
+  | "EXPLICIT_ADD_INTO_BOM_YES"
+  | "EXPLICIT_ADD_INTO_BOM_NO"
+  | "ADD_INTO_BOM_MISSING"
+  | "ADD_INTO_BOM_CONFLICT"
+  | "ADD_INTO_BOM_INVALID"
+  | "VARIANT_APPLICATION_NOT_SUPPORTED";
+
+export interface IrComponentAssembly {
+  readonly status: IrComponentAssemblyStatus;
+  readonly reason: IrComponentAssemblyReason;
+  readonly attributeKey: "Add into BOM";
+  readonly values: readonly JsonValue[];
+  readonly resolution:
+    | IrEffectiveAttribute["resolution"]
+    | "MISSING"
+    | "VARIANT_NOT_APPLIED";
+  readonly evidenceClass: "EXPLICIT_PROJECT_RECORD" | "DETERMINISTIC_RULE";
+  readonly truthStatus: "NOT_VERIFIED";
+  readonly semanticRuleSetVersion: "schemcp.semantic-rules/1";
+  readonly provenance: readonly IrRecordProvenance[];
+}
+
+export type IrComponentPinCompletenessStatus =
+  | "COMPLETE"
+  | "PARTIAL"
+  | "UNKNOWN";
+
+export type IrComponentPinCompletenessReason =
+  | "SINGLE_SYMBOL_PART_COMPLETE"
+  | "ALL_SYMBOL_PARTS_INSTANTIATED"
+  | "SYMBOL_UNIT_MISSING"
+  | "SYMBOL_REFERENCE_MISSING"
+  | "SYMBOL_NOT_FOUND"
+  | "SYMBOL_PART_DECLARATION_MISSING"
+  | "SYMBOL_PART_NOT_FOUND"
+  | "LOGICAL_COMPONENT_AMBIGUOUS"
+  | "INSTANCE_UNIT_CONTEXT_INCOMPLETE"
+  | "HIDDEN_PIN_SOURCE_UNRESOLVED";
+
+export interface IrComponentUnitReference {
+  readonly componentId: string;
+  readonly pageId: string;
+  readonly partId: string;
+}
+
+export interface IrComponentPinCompleteness {
+  readonly logicalComponentId: string;
+  readonly status: IrComponentPinCompletenessStatus;
+  readonly reason: IrComponentPinCompletenessReason;
+  readonly units: readonly IrComponentUnitReference[];
+  readonly declaredPartIds: readonly string[];
+  readonly instantiatedPartIds: readonly string[];
+  readonly missingPartIds: readonly string[];
+  readonly duplicatePartIds: readonly string[];
+  readonly symbolPinCount: number;
+  readonly instantiatedPinCount: number;
+  readonly hiddenPinCount: number;
+  readonly evidenceClass: "DETERMINISTIC_RULE";
+  readonly truthStatus: "NOT_VERIFIED";
+  readonly semanticRuleSetVersion: "schemcp.semantic-rules/1";
+  readonly provenance: readonly IrRecordProvenance[];
+}
+
+export interface IrComponentOccurrencePinOverride {
+  readonly symbolPinId: string;
+  readonly attributes: JsonObject;
+  readonly provenance: IrRecordProvenance;
+}
+
+export interface IrComponentOccurrence {
+  readonly id: string;
+  readonly instanceContextId: string;
+  readonly schematicId: string;
+  readonly pageId: string;
+  readonly componentId: string;
+  readonly designator?: string;
+  readonly attributes: readonly IrEffectiveAttribute[];
+  readonly pinOverrides: readonly IrComponentOccurrencePinOverride[];
+  readonly assembly: IrComponentAssembly;
+  readonly pinCompleteness: IrComponentPinCompleteness;
+  readonly populationStatus: IrComponentAssemblyStatus;
+  readonly pathTruth: "EXPLICIT_INSTANCE_DOCUMENT_RESOLVED";
+  readonly electricalTruth: "NOT_VERIFIED";
 }
 
 export type IrComponentLibraryBindingKey = "Symbol" | "Footprint";
@@ -355,6 +510,8 @@ export interface IrComponent {
   readonly footprintId?: string;
   readonly symbolBinding: IrComponentLibraryBinding;
   readonly footprintBinding: IrComponentLibraryBinding;
+  readonly assembly: IrComponentAssembly;
+  readonly pinCompleteness: IrComponentPinCompleteness;
   readonly attributes: readonly IrAttribute[];
   readonly provenance: IrRecordProvenance;
   readonly extensions: IrEasyEdaExtension;
@@ -417,6 +574,7 @@ export interface IrSymbolPin {
   };
   readonly length: number;
   readonly rotation: number;
+  readonly display?: boolean;
   readonly name?: string;
   readonly number?: string;
   readonly electricalType?: string | number;
@@ -454,6 +612,67 @@ export interface IrWire {
   readonly explicitNetName?: string;
   readonly segments: readonly IrWireSegment[];
   readonly attributes: readonly IrAttribute[];
+  readonly provenance: IrRecordProvenance;
+  readonly extensions: IrEasyEdaExtension;
+}
+
+export type IrBusEncoding =
+  | "OFFICIAL_DOTS_WITH_SEPARATE_BUSENTRY_RECORDS"
+  | "OBSERVED_EMBEDDED_BUSENTRY_MAP"
+  | "HYBRID_DOTS_WITH_EMBEDDED_BUSENTRY_MAP";
+
+export type IrBusEntryEncoding =
+  | "OFFICIAL_SEPARATE_BUSENTRY_RECORD"
+  | "OBSERVED_EMBEDDED_BUSENTRY_MAP_ITEM";
+
+export interface IrBusSegment {
+  readonly id: string;
+  readonly start: {
+    readonly x: number;
+    readonly y: number;
+  };
+  readonly end: {
+    readonly x: number;
+    readonly y: number;
+  };
+  readonly provenance: IrRecordProvenance;
+  readonly extensions: IrEasyEdaExtension;
+}
+
+export interface IrBusEntry {
+  readonly id: string;
+  readonly pageId: string;
+  readonly busId?: string;
+  readonly encoding: IrBusEntryEncoding;
+  readonly associationStatus:
+    | "EMBEDDED_IN_BUS_RECORD"
+    | "EXPLICIT_PARENT_ID"
+    | "SEPARATE_RECORD_WITHOUT_EXPLICIT_BUS_ID"
+    | "EXPLICIT_PARENT_ID_NOT_FOUND";
+  readonly order: number;
+  readonly busGroupId?: number;
+  readonly point: {
+    readonly x: number;
+    readonly y: number;
+  };
+  readonly rotation: number;
+  readonly evidenceClass: "EXPLICIT_PROJECT_RECORD";
+  readonly truthStatus: "NOT_VERIFIED";
+  readonly provenance: IrRecordProvenance;
+  readonly extensions: IrEasyEdaExtension;
+}
+
+export interface IrBus {
+  readonly id: string;
+  readonly pageId: string;
+  readonly encoding: IrBusEncoding;
+  readonly explicitNetName?: string;
+  readonly segments: readonly IrBusSegment[];
+  readonly entryIds: readonly string[];
+  readonly attributes: readonly IrAttribute[];
+  readonly memberExpansion: "NOT_PERFORMED";
+  readonly evidenceClass: "EXPLICIT_PROJECT_RECORD";
+  readonly truthStatus: "NOT_VERIFIED";
   readonly provenance: IrRecordProvenance;
   readonly extensions: IrEasyEdaExtension;
 }
@@ -511,6 +730,7 @@ export interface IrPinInstance {
   readonly symbolId: string;
   readonly symbolPinId: string;
   readonly partId: string;
+  readonly display?: boolean;
   readonly endpointKind: IrPinEndpointKind;
   readonly symbolType?: number;
   readonly designator?: string;
@@ -530,6 +750,192 @@ export interface IrPinInstance {
     readonly symbol: IrRecordProvenance;
     readonly symbolPin: IrRecordProvenance;
   };
+}
+
+export type IrSemanticTruthStatus = "NOT_VERIFIED" | "CANDIDATE" | "UNRESOLVED";
+
+export type IrComponentRole =
+  | "MCU_MPU"
+  | "POWER_INPUT"
+  | "LDO"
+  | "DC_DC"
+  | "POWER_SWITCH_CANDIDATE"
+  | "REFERENCE_SOURCE"
+  | "CRYSTAL_OSCILLATOR"
+  | "CLOCK_BUFFER_CANDIDATE"
+  | "MEMORY"
+  | "TRANSCEIVER"
+  | "ISOLATOR_CANDIDATE"
+  | "CONNECTOR"
+  | "PROTECTION_CANDIDATE"
+  | "FILTER_CANDIDATE"
+  | "RESET_SUPERVISOR"
+  | "BOOT_STRAP"
+  | "PASSIVE"
+  | "UNKNOWN";
+
+export interface IrComponentRoleCandidate {
+  readonly role: IrComponentRole;
+  readonly ruleId: string;
+  readonly evidenceClass: "DETERMINISTIC_RULE";
+  readonly truthStatus: IrSemanticTruthStatus;
+  readonly semanticRuleSetVersion: "schemcp.semantic-rules/1";
+  readonly provenance: readonly IrRecordProvenance[];
+}
+
+export interface IrComponentPowerDomainCandidate {
+  readonly id: string;
+  readonly name: string;
+  readonly pageId: string;
+  readonly netName: string;
+  readonly relationship: "INPUT" | "OUTPUT" | "GROUND" | "RELATED";
+  readonly pinInstanceIds: readonly string[];
+  readonly isolationStatus: "NOT_INDICATED" | "ISOLATION_CANDIDATE";
+  readonly ruleId: "power-domain.explicit-pin-net.v1";
+  readonly evidenceClass: "DETERMINISTIC_RULE";
+  readonly truthStatus: "CANDIDATE";
+  readonly semanticRuleSetVersion: "schemcp.semantic-rules/1";
+  readonly provenance: readonly IrRecordProvenance[];
+}
+
+export interface IrComponentSemantic {
+  readonly id: string;
+  readonly componentId: string;
+  readonly pageId: string;
+  readonly logicalComponentId: string;
+  readonly unitComponentIds: readonly string[];
+  readonly primaryRole: IrComponentRole;
+  readonly roles: readonly IrComponentRoleCandidate[];
+  readonly powerDomains: readonly IrComponentPowerDomainCandidate[];
+  readonly ruleId: "component.semantic.aggregate.v1";
+  readonly evidenceClass: "DETERMINISTIC_RULE";
+  readonly truthStatus: IrSemanticTruthStatus;
+  readonly semanticRuleSetVersion: "schemcp.semantic-rules/1";
+  readonly provenance: readonly IrRecordProvenance[];
+}
+
+export type IrInterfaceType =
+  | "SWD"
+  | "JTAG"
+  | "UART"
+  | "I2C"
+  | "SPI"
+  | "QSPI"
+  | "CAN"
+  | "USB"
+  | "ETHERNET"
+  | "SDIO"
+  | "I2S_SAI"
+  | "ANALOG"
+  | "GPIO_GROUP";
+
+export type IrInterfaceStatus =
+  | "CANDIDATE"
+  | "PARTIAL_CANDIDATE"
+  | "UNRESOLVED";
+
+export type IrInterfaceActivityStatus =
+  | "ACTIVE"
+  | "EXCLUDED_DNP"
+  | "ASSEMBLY_UNKNOWN";
+
+export interface IrInterfaceSignal {
+  readonly signal: string;
+  readonly pinInstanceIds: readonly string[];
+  readonly pinNames: readonly string[];
+  readonly explicitNetNames: readonly string[];
+  readonly provenance: readonly IrRecordProvenance[];
+}
+
+export interface IrInterface {
+  readonly id: string;
+  readonly type: IrInterfaceType;
+  readonly group: string;
+  readonly logicalComponentId: string;
+  readonly componentRefs: readonly {
+    readonly componentId: string;
+    readonly pageId: string;
+  }[];
+  readonly status: IrInterfaceStatus;
+  readonly activityStatus: IrInterfaceActivityStatus;
+  readonly signals: readonly IrInterfaceSignal[];
+  readonly requiredSignals: readonly string[];
+  readonly missingSignals: readonly string[];
+  readonly unresolvedReasons: readonly (
+    | "DUPLICATE_SIGNAL_ASSIGNMENT"
+    | "PIN_COMPLETENESS_UNKNOWN"
+    | "CONNECTION_CANDIDATE_UNRESOLVED"
+    | "ASSEMBLY_UNKNOWN"
+  )[];
+  readonly ruleId: string;
+  readonly evidenceClass: "DETERMINISTIC_RULE";
+  readonly truthStatus: IrSemanticTruthStatus;
+  readonly semanticRuleSetVersion: "schemcp.semantic-rules/1";
+  readonly provenance: readonly IrRecordProvenance[];
+}
+
+export type IrResourceType = "POWER" | "CLOCK" | "RESET_BOOT" | "MCU_PIN";
+
+export type IrResourceEdgeKind =
+  | "POWER_SOURCE_ENTRY"
+  | "POWER_CONVERSION"
+  | "POWER_SWITCH_TRANSFER_CANDIDATE"
+  | "POWER_TRANSFER_CANDIDATE"
+  | "POWER_LOAD"
+  | "CLOCK_SOURCE_OUTPUT"
+  | "CLOCK_BUFFER_INPUT"
+  | "CLOCK_BUFFER_OUTPUT"
+  | "CLOCK_SINK_INPUT"
+  | "RESET_SOURCE_OUTPUT"
+  | "RESET_EXTERNAL_SOURCE_CANDIDATE"
+  | "RESET_MANUAL_SOURCE_CANDIDATE"
+  | "RESET_SINK_INPUT"
+  | "RESET_BIAS_CANDIDATE"
+  | "BOOT_STRAP_INPUT"
+  | "BOOT_BIAS_CANDIDATE"
+  | "MCU_PIN_CONNECTION";
+
+export type IrResourceNode =
+  | {
+      readonly kind: "NET";
+      readonly id: string;
+      readonly pageId: string;
+      readonly netName: string;
+    }
+  | {
+      readonly kind: "COMPONENT";
+      readonly id: string;
+      readonly pageId: string;
+      readonly componentId: string;
+      readonly logicalComponentId: string;
+    };
+
+export type IrResourceUnresolvedReason =
+  | "ASSEMBLY_STATUS_UNKNOWN"
+  | "PIN_COMPLETENESS_NOT_COMPLETE";
+
+export interface IrResourceEdge {
+  readonly id: string;
+  readonly resourceType: IrResourceType;
+  readonly kind: IrResourceEdgeKind;
+  readonly direction: "DIRECTED" | "BIDIRECTIONAL";
+  readonly from: IrResourceNode;
+  readonly to: IrResourceNode;
+  readonly viaComponentRefs: readonly {
+    readonly componentId: string;
+    readonly pageId: string;
+    readonly logicalComponentId: string;
+  }[];
+  readonly pinInstanceIds: readonly string[];
+  readonly activityStatus: IrInterfaceActivityStatus;
+  readonly isolationStatus: "NOT_INDICATED" | "ISOLATION_CANDIDATE";
+  readonly status: "CANDIDATE" | "UNRESOLVED";
+  readonly unresolvedReasons: readonly IrResourceUnresolvedReason[];
+  readonly ruleId: string;
+  readonly evidenceClass: "DETERMINISTIC_RULE";
+  readonly truthStatus: IrSemanticTruthStatus;
+  readonly semanticRuleSetVersion: "schemcp.semantic-rules/1";
+  readonly provenance: readonly IrRecordProvenance[];
 }
 
 export type IrShortRelationCandidateStatus =
@@ -678,8 +1084,42 @@ export interface EdaIrSummary {
   readonly instanceContexts: number;
   readonly instanceDocumentsWithInvalidPath: number;
   readonly instanceContextsWithMissingSchematic: number;
+  readonly instanceContextsResolved: number;
+  readonly instanceContextsUnresolved: number;
   readonly instanceAttributeOverrides: number;
+  readonly instanceAttributeOverridesAppliedToComponents: number;
+  readonly instanceAttributeOverridesAppliedToPins: number;
+  readonly instanceAttributeOverridesUnresolved: number;
+  readonly componentOccurrences: number;
+  readonly componentOccurrencesPopulated: number;
+  readonly componentOccurrencesDnp: number;
+  readonly componentOccurrencesAssemblyUnknown: number;
   readonly components: number;
+  readonly componentsPopulated: number;
+  readonly componentsDnp: number;
+  readonly componentsAssemblyUnknown: number;
+  readonly componentsPinCompletenessComplete: number;
+  readonly componentsPinCompletenessPartial: number;
+  readonly componentsPinCompletenessUnknown: number;
+  readonly componentSemantics: number;
+  readonly componentSemanticsUnknownRole: number;
+  readonly componentPowerDomainCandidates: number;
+  readonly interfaces: number;
+  readonly interfacesCandidate: number;
+  readonly interfacesPartialCandidate: number;
+  readonly interfacesUnresolved: number;
+  readonly interfacesActive: number;
+  readonly interfacesExcludedDnp: number;
+  readonly interfacesAssemblyUnknown: number;
+  readonly resourceNodes: number;
+  readonly resourceEdges: number;
+  readonly resourceEdgesPower: number;
+  readonly resourceEdgesClock: number;
+  readonly resourceEdgesResetBoot: number;
+  readonly resourceEdgesMcuPin: number;
+  readonly resourceEdgesActive: number;
+  readonly resourceEdgesExcludedDnp: number;
+  readonly resourceEdgesAssemblyUnknown: number;
   readonly componentsWithDesignator: number;
   readonly componentsWithDevice: number;
   readonly componentsWithSymbol: number;
@@ -698,10 +1138,19 @@ export interface EdaIrSummary {
   readonly symbolTextsWithPartNotFound: number;
   readonly symbolPins: number;
   readonly symbolPinsWithNumber: number;
+  readonly symbolPinsHidden: number;
   readonly devices: number;
   readonly wires: number;
   readonly wiresWithExplicitNet: number;
   readonly wireSegments: number;
+  readonly buses: number;
+  readonly busesWithExplicitNet: number;
+  readonly busesWithEmptyEntrySet: number;
+  readonly busSegments: number;
+  readonly busEntries: number;
+  readonly busEntriesEmbedded: number;
+  readonly busEntriesSeparate: number;
+  readonly busEntriesUnbound: number;
   readonly pinInstances: number;
   readonly pinInstancesWithUniqueExplicitNetCandidate: number;
   readonly pinInstancesWithConflictingExplicitNetCandidates: number;
@@ -734,10 +1183,10 @@ export interface EdaIrSummary {
 
 export interface EdaIr {
   readonly schema: "schemcp.eda-ir";
-  readonly schemaVersion: "1.0.0";
+  readonly schemaVersion: "1.1.0";
   readonly generator: {
     readonly name: "@yuanzihao/schemcp";
-    readonly version: "0.1.0";
+    readonly version: "0.2.0";
   };
   readonly source: {
     readonly format: "EASYEDA_V3_LOG";
@@ -756,13 +1205,20 @@ export interface EdaIr {
   readonly variants: readonly IrVariant[];
   readonly componentGroups: readonly IrComponentGroup[];
   readonly instanceContexts: readonly IrInstanceContext[];
+  readonly componentOccurrences: readonly IrComponentOccurrence[];
   readonly components: readonly IrComponent[];
+  readonly componentSemantics: readonly IrComponentSemantic[];
+  readonly interfaces: readonly IrInterface[];
+  readonly resourceNodes: readonly IrResourceNode[];
+  readonly resourceEdges: readonly IrResourceEdge[];
   readonly symbols: readonly IrSymbol[];
   readonly symbolParts: readonly IrSymbolPart[];
   readonly symbolTexts: readonly IrSymbolText[];
   readonly symbolPins: readonly IrSymbolPin[];
   readonly devices: readonly IrDevice[];
   readonly wires: readonly IrWire[];
+  readonly buses: readonly IrBus[];
+  readonly busEntries: readonly IrBusEntry[];
   readonly pinInstances: readonly IrPinInstance[];
   readonly shortRelations: readonly IrShortRelationCandidate[];
   readonly networkEndpointCandidates: readonly IrNetworkEndpointCandidate[];

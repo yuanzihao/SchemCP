@@ -2,12 +2,12 @@
 
 > 本文档由运行中的 SchemCP `tools/list` 契约确定性生成，请勿手工编辑。
 
-- 契约：`schemcp.mcp-tools-contract 1.0.0`
+- 契约：`schemcp.mcp-tools-contract 1.1.0`
 - 服务：`schemcp`
-- 包：`@yuanzihao/schemcp@0.1.0`
+- 包：`@yuanzihao/schemcp@0.2.0`
 - 运输：`stdio`
-- 工具数：`48`
-- JSON 快照 SHA-256：`6feb7cb15f9a0cfdb7a224f2dbe8daa0b82537e1815b72781c82b2c581f40ffa`
+- 工具数：`54`
+- JSON 快照 SHA-256：`5bafd6539c7573863f92458385bb5dcb3a7c491057eacd0f28f1e1ecfbe2a1d3`
 
 每个工具的结果至少包含 `ok:boolean` 与平台安全能力状态；工具专用字段作为受版本化公共契约约束的扩展属性返回。失败时 `ok=false`，并返回稳定的 `error.code`。
 
@@ -1102,7 +1102,7 @@
 
 **分页列出工程设计层级**
 
-分页返回工程配置、Board、Schematic 和 Sheet 节点。父子关系只来自归档成员关系或 META 中的显式引用，不根据名称猜测。
+分页返回工程配置、Board、Schematic、Sheet 和显式 INSTANCE 上下文节点。父子关系只来自归档成员关系、META 引用或已校验 INSTANCE 路径，不根据名称猜测。
 
 输入 Schema：
 
@@ -1120,7 +1120,8 @@
         "PROJECT_CONFIGURATION",
         "BOARD",
         "SCHEMATIC",
-        "SHEET"
+        "SHEET",
+        "INSTANCE_CONTEXT"
       ],
       "type": "string"
     },
@@ -1170,7 +1171,7 @@
 
 **分页列出显式层级实例上下文**
 
-解析并分页返回官方 INSTANCE 文档 UUID 中的 Schematic、Block 路径和终端页号。页号保留为标识符，不推断为 SCH_PAGE。
+兼容官方页号编码和当前导出的页面 ID/Block 编码，分页返回已校验的层级路径、终端页、解析状态和有效组件实例数量。
 
 输入 Schema：
 
@@ -1229,7 +1230,7 @@
 
 **获取实例上下文及原始属性覆盖**
 
-通过精确 INSTANCE 文档 ID 获取路径，并分页返回 INSTANCE_ATTR 原始属性。目标图元尚未解析，覆盖不会被应用。
+通过精确 INSTANCE 文档 ID 获取已校验路径，并分页返回每条 INSTANCE_ATTR 的应用状态与精确目标；未解析项保留稳定原因，不会被猜测应用。
 
 输入 Schema：
 
@@ -1291,7 +1292,7 @@
 
 **分页列出组件**
 
-按确定顺序分页列出组件，可按页面和位号子串筛选。摘要直接包含器件/符号名称、显式 LCSC 或制造商+MPN 身份以及工程 Datasheet 链接数量，便于 AI 先建立面向人的器件目录；完整参数和链接使用 get_component。
+按确定顺序分页列出组件，可按页面、位号、层级实例、装配状态和引脚完整性筛选。Add into BOM=yes/no 分别形成 POPULATED/DNP；缺失、冲突、非法或未应用 Variant 返回 UNKNOWN。
 
 输入 Schema：
 
@@ -1299,6 +1300,15 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "properties": {
+    "assemblyStatus": {
+      "description": "可选有效装配状态",
+      "enum": [
+        "POPULATED",
+        "DNP",
+        "UNKNOWN"
+      ],
+      "type": "string"
+    },
     "cursor": {
       "description": "上一页返回的不透明 nextCursor；改变筛选条件后不可复用",
       "minLength": 1,
@@ -1306,6 +1316,12 @@
     },
     "designatorContains": {
       "description": "不区分大小写的位号子串",
+      "maxLength": 128,
+      "minLength": 1,
+      "type": "string"
+    },
+    "instanceContextId": {
+      "description": "可选精确 INSTANCE 上下文 ID",
       "maxLength": 128,
       "minLength": 1,
       "type": "string"
@@ -1322,9 +1338,24 @@
       "minLength": 1,
       "type": "string"
     },
+    "pinCompletenessStatus": {
+      "description": "可选逻辑器件引脚完整性状态",
+      "enum": [
+        "COMPLETE",
+        "PARTIAL",
+        "UNKNOWN"
+      ],
+      "type": "string"
+    },
     "projectHandle": {
       "description": "可选工程句柄；省略时查询当前活动工程。句柄来自 open/list/get_active_schematic_project",
       "maxLength": 96,
+      "minLength": 1,
+      "type": "string"
+    },
+    "variantId": {
+      "description": "可选当前工程 Variant ID；替代料未应用时装配状态返回 UNKNOWN",
+      "maxLength": 128,
       "minLength": 1,
       "type": "string"
     }
@@ -2160,7 +2191,7 @@
 
 **获取单个组件**
 
-通过组件 ID 或精确位号获取组件；返回器件/符号名称、精确身份、组件属性优先于 Device 默认值的全部显式参数、工程 Datasheet HTTPS 链接和由显式 C-ID 生成的商城入口。重复位号不会被静默选择；链接来源真实性与在线目录匹配状态会单独标注。
+通过组件 ID 或精确位号获取基础组件，也可指定 instanceContextId 获取层级实例中已应用 INSTANCE_ATTR 后的有效组件。返回显式 DNP/装配证据与多 PART 引脚完整性；替代 Variant 不在 v0.2 中猜测应用。
 
 输入 Schema：
 
@@ -2180,6 +2211,12 @@
       "minLength": 1,
       "type": "string"
     },
+    "instanceContextId": {
+      "description": "可选精确 INSTANCE 上下文 ID；指定后返回该层级实例中的有效组件属性",
+      "maxLength": 128,
+      "minLength": 1,
+      "type": "string"
+    },
     "pageId": {
       "description": "可选页面 ID，用于消歧",
       "maxLength": 128,
@@ -2189,6 +2226,12 @@
     "projectHandle": {
       "description": "可选工程句柄；省略时查询当前活动工程。句柄来自 open/list/get_active_schematic_project",
       "maxLength": 96,
+      "minLength": 1,
+      "type": "string"
+    },
+    "variantId": {
+      "description": "可选当前工程 Variant ID；v0.2 不应用替代料，指定后装配状态保守返回 UNKNOWN",
+      "maxLength": 128,
       "minLength": 1,
       "type": "string"
     }
@@ -2220,7 +2263,7 @@
 
 **获取组件符号引脚**
 
-分页返回组件引脚实例、变换后的连接点及显式网络几何候选。候选尚未通过官方网表验证。
+分页返回逻辑器件已实例化 PART 的合并引脚、隐藏标志、变换连接点及显式网络几何候选；多单元缺失或归属歧义会显式返回 PARTIAL/UNKNOWN，不据此判定未使用引脚。
 
 输入 Schema：
 
@@ -2245,6 +2288,12 @@
       "minLength": 1,
       "type": "string"
     },
+    "instanceContextId": {
+      "description": "可选精确 INSTANCE 上下文 ID；指定后返回该层级实例中的有效组件属性",
+      "maxLength": 128,
+      "minLength": 1,
+      "type": "string"
+    },
     "limit": {
       "description": "每页数量，默认 20，最大 50",
       "maximum": 50,
@@ -2260,6 +2309,12 @@
     "projectHandle": {
       "description": "可选工程句柄；省略时查询当前活动工程。句柄来自 open/list/get_active_schematic_project",
       "maxLength": 96,
+      "minLength": 1,
+      "type": "string"
+    },
+    "variantId": {
+      "description": "可选当前工程 Variant ID；v0.2 不应用替代料，指定后装配状态保守返回 UNKNOWN",
+      "maxLength": 128,
       "minLength": 1,
       "type": "string"
     }
@@ -2630,7 +2685,628 @@
 }
 ```
 
-## 42. `list_candidate_netlist_tuples`
+## 42. `list_buses`
+
+**分页列出显式 BUS 或 BUSENTRY**
+
+分页返回显式 BUS 本体或 BUSENTRY 入口。兼容官方独立 BUSENTRY 与当前导出的内嵌 busEntry；保留 NET、order、坐标、旋转、编码和绑定状态，不展开 DATA[7:0] 等名称，也不靠几何猜测独立入口归属。
+
+输入 Schema：
+
+```json
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "properties": {
+    "associationStatus": {
+      "description": "仅 ENTRIES 视图：入口归属状态筛选",
+      "enum": [
+        "EMBEDDED_IN_BUS_RECORD",
+        "EXPLICIT_PARENT_ID",
+        "SEPARATE_RECORD_WITHOUT_EXPLICIT_BUS_ID",
+        "EXPLICIT_PARENT_ID_NOT_FOUND"
+      ],
+      "type": "string"
+    },
+    "busEncoding": {
+      "description": "仅 BUSES 视图：显式 BUS 编码筛选",
+      "enum": [
+        "OFFICIAL_DOTS_WITH_SEPARATE_BUSENTRY_RECORDS",
+        "OBSERVED_EMBEDDED_BUSENTRY_MAP",
+        "HYBRID_DOTS_WITH_EMBEDDED_BUSENTRY_MAP"
+      ],
+      "type": "string"
+    },
+    "busId": {
+      "description": "可选精确 BUS ID；ENTRIES 视图只返回已绑定该 BUS 的入口",
+      "maxLength": 128,
+      "minLength": 1,
+      "type": "string"
+    },
+    "cursor": {
+      "description": "上一页返回的不透明 nextCursor；改变筛选条件后不可复用",
+      "minLength": 1,
+      "type": "string"
+    },
+    "entryEncoding": {
+      "description": "仅 ENTRIES 视图：BUSENTRY 编码筛选",
+      "enum": [
+        "OFFICIAL_SEPARATE_BUSENTRY_RECORD",
+        "OBSERVED_EMBEDDED_BUSENTRY_MAP_ITEM"
+      ],
+      "type": "string"
+    },
+    "limit": {
+      "description": "每页数量，默认 20，最大 50",
+      "maximum": 50,
+      "minimum": 1,
+      "type": "integer"
+    },
+    "netNameContains": {
+      "description": "仅 BUSES 视图：不区分大小写的 NET 子串",
+      "maxLength": 128,
+      "minLength": 1,
+      "type": "string"
+    },
+    "pageId": {
+      "description": "可选精确原理图页 ID",
+      "maxLength": 128,
+      "minLength": 1,
+      "type": "string"
+    },
+    "projectHandle": {
+      "description": "可选工程句柄；省略时查询当前活动工程。句柄来自 open/list/get_active_schematic_project",
+      "maxLength": 96,
+      "minLength": 1,
+      "type": "string"
+    },
+    "view": {
+      "description": "返回 BUS 列表或 BUSENTRY 列表；默认 BUSES",
+      "enum": [
+        "BUSES",
+        "ENTRIES"
+      ],
+      "type": "string"
+    }
+  },
+  "type": "object"
+}
+```
+
+结果 Schema：
+
+```json
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": {},
+  "properties": {
+    "ok": {
+      "description": "工具调用是否成功",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "ok"
+  ],
+  "type": "object"
+}
+```
+
+## 43. `list_interfaces`
+
+**分页列出接口候选**
+
+使用版本化确定性规则从显式引脚名称和网络候选识别 SWD/JTAG、UART、I²C、SPI/QSPI、CAN、USB、Ethernet、SDIO、I²S/SAI、模拟和 GPIO 接口。缺失规定信号只返回 PARTIAL_CANDIDATE；DNP 默认排除，可显式查询排除证据。
+
+输入 Schema：
+
+```json
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "properties": {
+    "activityStatus": {
+      "description": "装配活动筛选；默认仅 ACTIVE，ALL 同时返回 DNP 排除和装配未知证据",
+      "enum": [
+        "ACTIVE",
+        "EXCLUDED_DNP",
+        "ASSEMBLY_UNKNOWN",
+        "ALL"
+      ],
+      "type": "string"
+    },
+    "componentId": {
+      "description": "可选精确组件 ID",
+      "maxLength": 128,
+      "minLength": 1,
+      "type": "string"
+    },
+    "cursor": {
+      "description": "上一页返回的不透明 nextCursor；改变筛选条件后不可复用",
+      "minLength": 1,
+      "type": "string"
+    },
+    "instanceContextId": {
+      "description": "可选精确 INSTANCE 上下文 ID",
+      "maxLength": 128,
+      "minLength": 1,
+      "type": "string"
+    },
+    "limit": {
+      "description": "每页数量，默认 20，最大 50",
+      "maximum": 50,
+      "minimum": 1,
+      "type": "integer"
+    },
+    "pageId": {
+      "description": "可选精确原理图页 ID",
+      "maxLength": 128,
+      "minLength": 1,
+      "type": "string"
+    },
+    "projectHandle": {
+      "description": "可选工程句柄；省略时查询当前活动工程。句柄来自 open/list/get_active_schematic_project",
+      "maxLength": 96,
+      "minLength": 1,
+      "type": "string"
+    },
+    "status": {
+      "description": "可选接口识别状态",
+      "enum": [
+        "CANDIDATE",
+        "PARTIAL_CANDIDATE",
+        "UNRESOLVED"
+      ],
+      "type": "string"
+    },
+    "type": {
+      "description": "可选接口类型",
+      "enum": [
+        "SWD",
+        "JTAG",
+        "UART",
+        "I2C",
+        "SPI",
+        "QSPI",
+        "CAN",
+        "USB",
+        "ETHERNET",
+        "SDIO",
+        "I2S_SAI",
+        "ANALOG",
+        "GPIO_GROUP"
+      ],
+      "type": "string"
+    },
+    "variantId": {
+      "description": "可选当前工程 Variant ID；未应用 Variant 时接口活动状态保守为 ASSEMBLY_UNKNOWN",
+      "maxLength": 128,
+      "minLength": 1,
+      "type": "string"
+    }
+  },
+  "type": "object"
+}
+```
+
+结果 Schema：
+
+```json
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": {},
+  "properties": {
+    "ok": {
+      "description": "工具调用是否成功",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "ok"
+  ],
+  "type": "object"
+}
+```
+
+## 44. `get_power_tree`
+
+**获取有界电源树候选**
+
+沿页作用域显式电源网络、明确 POWER_INPUT/LDO/DC-DC 角色和带证据的电源开关、保护或滤波候选传输边进行有界遍历。不会穿过普通器件猜测连通，支持多个根、环路和 DNP/实例/Variant 作用域。
+
+输入 Schema：
+
+```json
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "properties": {
+    "activityStatus": {
+      "description": "装配活动筛选；默认 ACTIVE，ALL 包含 DNP 与装配未知证据",
+      "enum": [
+        "ACTIVE",
+        "EXCLUDED_DNP",
+        "ASSEMBLY_UNKNOWN",
+        "ALL"
+      ],
+      "type": "string"
+    },
+    "cursor": {
+      "description": "上一页返回的不透明 nextCursor；改变筛选条件后不可复用",
+      "minLength": 1,
+      "type": "string"
+    },
+    "instanceContextId": {
+      "description": "可选精确 INSTANCE 上下文 ID",
+      "maxLength": 128,
+      "minLength": 1,
+      "type": "string"
+    },
+    "limit": {
+      "description": "每页数量，默认 20，最大 50",
+      "maximum": 50,
+      "minimum": 1,
+      "type": "integer"
+    },
+    "maxDepth": {
+      "description": "图遍历深度，默认 4，最大 8",
+      "maximum": 8,
+      "minimum": 0,
+      "type": "integer"
+    },
+    "pageId": {
+      "description": "可选精确原理图页 ID",
+      "maxLength": 128,
+      "minLength": 1,
+      "type": "string"
+    },
+    "projectHandle": {
+      "description": "可选工程句柄；省略时查询当前活动工程。句柄来自 open/list/get_active_schematic_project",
+      "maxLength": 96,
+      "minLength": 1,
+      "type": "string"
+    },
+    "rootNetName": {
+      "description": "可选精确根网络名；同名跨页时应同时提供 pageId",
+      "maxLength": 128,
+      "minLength": 1,
+      "type": "string"
+    },
+    "rootNodeId": {
+      "description": "可选资源图节点 ID；来自前一次查询的 roots 或边端点",
+      "maxLength": 128,
+      "minLength": 1,
+      "type": "string"
+    },
+    "variantId": {
+      "description": "可选 Variant ID；当前未应用 Variant 时资源边保守降级为未解析",
+      "maxLength": 128,
+      "minLength": 1,
+      "type": "string"
+    }
+  },
+  "type": "object"
+}
+```
+
+结果 Schema：
+
+```json
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": {},
+  "properties": {
+    "ok": {
+      "description": "工具调用是否成功",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "ok"
+  ],
+  "type": "object"
+}
+```
+
+## 45. `get_clock_tree`
+
+**获取外部时钟树候选**
+
+只沿原理图中外部晶振/振荡器、显式身份的时钟缓冲候选和 MCU 外部时钟输入网络进行有界查询；不推断 MCU 内部 PLL、内部时钟树或固件配置。
+
+输入 Schema：
+
+```json
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "properties": {
+    "activityStatus": {
+      "description": "装配活动筛选；默认 ACTIVE，ALL 包含 DNP 与装配未知证据",
+      "enum": [
+        "ACTIVE",
+        "EXCLUDED_DNP",
+        "ASSEMBLY_UNKNOWN",
+        "ALL"
+      ],
+      "type": "string"
+    },
+    "cursor": {
+      "description": "上一页返回的不透明 nextCursor；改变筛选条件后不可复用",
+      "minLength": 1,
+      "type": "string"
+    },
+    "instanceContextId": {
+      "description": "可选精确 INSTANCE 上下文 ID",
+      "maxLength": 128,
+      "minLength": 1,
+      "type": "string"
+    },
+    "limit": {
+      "description": "每页数量，默认 20，最大 50",
+      "maximum": 50,
+      "minimum": 1,
+      "type": "integer"
+    },
+    "maxDepth": {
+      "description": "图遍历深度，默认 4，最大 8",
+      "maximum": 8,
+      "minimum": 0,
+      "type": "integer"
+    },
+    "pageId": {
+      "description": "可选精确原理图页 ID",
+      "maxLength": 128,
+      "minLength": 1,
+      "type": "string"
+    },
+    "projectHandle": {
+      "description": "可选工程句柄；省略时查询当前活动工程。句柄来自 open/list/get_active_schematic_project",
+      "maxLength": 96,
+      "minLength": 1,
+      "type": "string"
+    },
+    "rootNetName": {
+      "description": "可选精确根网络名；同名跨页时应同时提供 pageId",
+      "maxLength": 128,
+      "minLength": 1,
+      "type": "string"
+    },
+    "rootNodeId": {
+      "description": "可选资源图节点 ID；来自前一次查询的 roots 或边端点",
+      "maxLength": 128,
+      "minLength": 1,
+      "type": "string"
+    },
+    "variantId": {
+      "description": "可选 Variant ID；当前未应用 Variant 时资源边保守降级为未解析",
+      "maxLength": 128,
+      "minLength": 1,
+      "type": "string"
+    }
+  },
+  "type": "object"
+}
+```
+
+结果 Schema：
+
+```json
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": {},
+  "properties": {
+    "ok": {
+      "description": "工具调用是否成功",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "ok"
+  ],
+  "type": "object"
+}
+```
+
+## 46. `get_reset_boot_paths`
+
+**获取复位与启动绑带路径候选**
+
+查询显式 RESET/RST/BOOT/STRAP 网络上的监督器、连接器外部控制、手动复位、MCU 输入和可证明的无源上下拉候选。只返回原理图外部路径，不推断芯片内部启动逻辑或固件行为。
+
+输入 Schema：
+
+```json
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "properties": {
+    "activityStatus": {
+      "description": "装配活动筛选；默认 ACTIVE，ALL 包含 DNP 与装配未知证据",
+      "enum": [
+        "ACTIVE",
+        "EXCLUDED_DNP",
+        "ASSEMBLY_UNKNOWN",
+        "ALL"
+      ],
+      "type": "string"
+    },
+    "cursor": {
+      "description": "上一页返回的不透明 nextCursor；改变筛选条件后不可复用",
+      "minLength": 1,
+      "type": "string"
+    },
+    "instanceContextId": {
+      "description": "可选精确 INSTANCE 上下文 ID",
+      "maxLength": 128,
+      "minLength": 1,
+      "type": "string"
+    },
+    "limit": {
+      "description": "每页数量，默认 20，最大 50",
+      "maximum": 50,
+      "minimum": 1,
+      "type": "integer"
+    },
+    "maxDepth": {
+      "description": "图遍历深度，默认 4，最大 8",
+      "maximum": 8,
+      "minimum": 0,
+      "type": "integer"
+    },
+    "pageId": {
+      "description": "可选精确原理图页 ID",
+      "maxLength": 128,
+      "minLength": 1,
+      "type": "string"
+    },
+    "projectHandle": {
+      "description": "可选工程句柄；省略时查询当前活动工程。句柄来自 open/list/get_active_schematic_project",
+      "maxLength": 96,
+      "minLength": 1,
+      "type": "string"
+    },
+    "rootNetName": {
+      "description": "可选精确根网络名；同名跨页时应同时提供 pageId",
+      "maxLength": 128,
+      "minLength": 1,
+      "type": "string"
+    },
+    "rootNodeId": {
+      "description": "可选资源图节点 ID；来自前一次查询的 roots 或边端点",
+      "maxLength": 128,
+      "minLength": 1,
+      "type": "string"
+    },
+    "variantId": {
+      "description": "可选 Variant ID；当前未应用 Variant 时资源边保守降级为未解析",
+      "maxLength": 128,
+      "minLength": 1,
+      "type": "string"
+    }
+  },
+  "type": "object"
+}
+```
+
+结果 Schema：
+
+```json
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": {},
+  "properties": {
+    "ok": {
+      "description": "工具调用是否成功",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "ok"
+  ],
+  "type": "object"
+}
+```
+
+## 47. `get_mcu_pin_usage`
+
+**获取 MCU 引脚使用状态**
+
+分页返回全部 MCU_MPU 角色候选的完整多单元引脚，以及 USED/EXPLICIT_NC/UNUSED/UNKNOWN/DNP_COMPONENT 状态、细分网表或候选依据、电源域、接口、外部资源角色和稳定未解析原因。只有引脚模型 COMPLETE、基础 Variant、器件已装配，且工程显式 NC 或已绑定 .enet 明确空网络时才确认未使用；其余未连接表象保持 UNKNOWN。
+
+输入 Schema：
+
+```json
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "properties": {
+    "componentId": {
+      "description": "可选精确 MCU 组件 ID",
+      "maxLength": 128,
+      "minLength": 1,
+      "type": "string"
+    },
+    "cursor": {
+      "description": "上一页返回的不透明 nextCursor；改变筛选条件后不可复用",
+      "minLength": 1,
+      "type": "string"
+    },
+    "designator": {
+      "description": "可选精确 MCU 位号；歧义时需补 pageId",
+      "maxLength": 128,
+      "minLength": 1,
+      "type": "string"
+    },
+    "instanceContextId": {
+      "description": "可选精确 INSTANCE 上下文 ID",
+      "maxLength": 128,
+      "minLength": 1,
+      "type": "string"
+    },
+    "limit": {
+      "description": "每页数量，默认 20，最大 50",
+      "maximum": 50,
+      "minimum": 1,
+      "type": "integer"
+    },
+    "pageId": {
+      "description": "可选精确原理图页 ID",
+      "maxLength": 128,
+      "minLength": 1,
+      "type": "string"
+    },
+    "projectHandle": {
+      "description": "可选工程句柄；省略时查询当前活动工程。句柄来自 open/list/get_active_schematic_project",
+      "maxLength": 96,
+      "minLength": 1,
+      "type": "string"
+    },
+    "status": {
+      "description": "可选目标级 MCU 引脚资源状态",
+      "enum": [
+        "USED",
+        "EXPLICIT_NC",
+        "UNUSED",
+        "UNKNOWN",
+        "DNP_COMPONENT"
+      ],
+      "type": "string"
+    },
+    "usageStatus": {
+      "enum": [
+        "USED_BOUND_NETLIST",
+        "USED_CANDIDATE",
+        "UNUSED_CONFIRMED",
+        "UNKNOWN"
+      ],
+      "type": "string"
+    },
+    "variantId": {
+      "description": "可选 Variant ID；当前未应用 Variant 时不得确认未使用",
+      "maxLength": 128,
+      "minLength": 1,
+      "type": "string"
+    }
+  },
+  "type": "object"
+}
+```
+
+结果 Schema：
+
+```json
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": {},
+  "properties": {
+    "ok": {
+      "description": "工具调用是否成功",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "ok"
+  ],
+  "type": "object"
+}
+```
+
+## 48. `list_candidate_netlist_tuples`
 
 **分页列出规范化候选网表元组**
 
@@ -2707,7 +3383,7 @@
 }
 ```
 
-## 43. `list_candidate_netlist_exclusions`
+## 49. `list_candidate_netlist_exclusions`
 
 **分页列出候选网表排除项**
 
@@ -2785,7 +3461,7 @@
 }
 ```
 
-## 44. `list_network_endpoint_candidates`
+## 50. `list_network_endpoint_candidates`
 
 **分页列出网络端点声明候选**
 
@@ -2863,7 +3539,7 @@
 }
 ```
 
-## 45. `list_short_relation_candidates`
+## 51. `list_short_relation_candidates`
 
 **分页列出 Short Symbol 关系候选**
 
@@ -2932,7 +3608,7 @@
 }
 ```
 
-## 46. `diff_project_versions`
+## 52. `diff_project_versions`
 
 **分页比较当前工程与基线工程**
 
@@ -2975,6 +3651,10 @@
         "COMPONENT_GROUP",
         "INSTANCE_CONTEXT",
         "COMPONENT",
+        "COMPONENT_SEMANTIC",
+        "INTERFACE",
+        "RESOURCE_NODE",
+        "RESOURCE_EDGE",
         "SYMBOL",
         "SYMBOL_PART",
         "SYMBOL_TEXT",
@@ -3024,7 +3704,7 @@
 }
 ```
 
-## 47. `get_diagnostics`
+## 53. `get_diagnostics`
 
 **分页获取编译诊断**
 
@@ -3084,11 +3764,11 @@
 }
 ```
 
-## 48. `get_evidence`
+## 54. `get_evidence`
 
 **获取对象来源证据**
 
-返回组件、符号引脚、符号文字、原理图表格、原理图图形、导线、原理图注释、Variant 或元件组的原始 V3 日志来源位置；重复局部 ID 会显式返回歧义。
+返回组件、符号引脚、符号文字、原理图表格、原理图图形、导线、BUS/BUSENTRY、原理图注释、Variant 或元件组的原始 V3 日志来源位置；重复局部 ID 会显式返回歧义。
 
 输入 Schema：
 
@@ -3117,7 +3797,9 @@
         "schematicAnnotation",
         "schematicGraphicPrimitive",
         "schematicTable",
-        "symbolText"
+        "symbolText",
+        "bus",
+        "busEntry"
       ],
       "type": "string"
     },

@@ -76,6 +76,10 @@ const EPRU = [
     { type: "ATTR", id: "attr-frequency", ticket: 5 },
     { parentId: "component-a", key: "Frequency", value: "168MHz" }
   ),
+  record(
+    { type: "ATTR", id: "attr-add-into-bom", ticket: 5 },
+    { parentId: "component-a", key: "Add into BOM", value: "yes" }
+  ),
   record({ type: "WIRE", id: "wire-a", ticket: 6 }, { locked: false }),
   record(
     { type: "ATTR", id: "attr-net", ticket: 7 },
@@ -150,6 +154,32 @@ const EPRU = [
     }
   ),
   record(
+    { type: "BUS", id: "bus-a", ticket: 9 },
+    {
+      groupId: "",
+      locked: false,
+      zIndex: 2,
+      busEntry: {
+        "bus-entry-b": {
+          order: 1,
+          pointX: 40,
+          pointY: 50,
+          rotation: 0
+        },
+        "bus-entry-a": {
+          order: 0,
+          pointX: 30,
+          pointY: 50,
+          rotation: 0
+        }
+      }
+    }
+  ),
+  record(
+    { type: "ATTR", id: "attr-bus-net", ticket: 9 },
+    { parentId: "bus-a", key: "NET", value: "DATA[1:0]" }
+  ),
+  record(
     { type: "DOCHEAD", ticket: 10 },
     { docType: "SYMBOL", client: "client-a", uuid: "symbol-a" }
   ),
@@ -189,12 +219,17 @@ const EPRU = [
       x: 0,
       y: 0,
       length: 20,
-      rotation: 0
+      rotation: 0,
+      display: true
     }
   ),
   record(
     { type: "ATTR", id: "attr-pin-number", ticket: 14 },
     { parentId: "pin-a", key: "Pin Number", value: "1" }
+  ),
+  record(
+    { type: "ATTR", id: "attr-pin-name", ticket: 14 },
+    { parentId: "pin-a", key: "Pin Name", value: "USB_DP" }
   ),
   record(
     { type: "DOCHEAD" },
@@ -230,7 +265,7 @@ const EPRU = [
   record(
     {
       type: "GROUP_DATA",
-      id: "component-a@schematic-a_$1",
+      id: "component-a@schematic-a_$page-a",
       ticket: 17
     },
     { DNP: "yes" }
@@ -240,7 +275,7 @@ const EPRU = [
     {
       docType: "INSTANCE",
       client: "client-a",
-      uuid: "schematic-a_$1"
+      uuid: "schematic-a_$page-a"
     }
   ),
   record(
@@ -815,6 +850,191 @@ test("MCP 无工程启动后可直接打开对话附件并安全关闭", async (
         }
       ).summary.components,
       1
+    );
+
+    const buses = structured(
+      await client.callTool({
+        name: "list_buses",
+        arguments: { view: "BUSES", netNameContains: "data" }
+      })
+    );
+    const busItems = (
+      buses.page as {
+        readonly items: readonly {
+          readonly id: string;
+          readonly explicitNetName: string;
+          readonly entryCount: number;
+          readonly memberExpansion: string;
+        }[];
+      }
+    ).items;
+    assert.equal(busItems.length, 1);
+    assert.equal(busItems[0]?.explicitNetName, "DATA[1:0]");
+    assert.equal(busItems[0]?.entryCount, 2);
+    assert.equal(busItems[0]?.memberExpansion, "NOT_PERFORMED");
+    const busEntries = structured(
+      await client.callTool({
+        name: "list_buses",
+        arguments: {
+          view: "ENTRIES",
+          busId: busItems[0]?.id,
+          limit: 2
+        }
+      })
+    );
+    assert.deepEqual(
+      (
+        busEntries.page as {
+          readonly items: readonly {
+            readonly id: string;
+            readonly order: number;
+          }[];
+        }
+      ).items.map((entry) => [entry.id, entry.order]),
+      [
+        ["bus-entry-a", 0],
+        ["bus-entry-b", 1]
+      ]
+    );
+
+    const interfaces = structured(
+      await client.callTool({
+        name: "list_interfaces",
+        arguments: { type: "USB", status: "PARTIAL_CANDIDATE" }
+      })
+    );
+    assert.equal(
+      interfaces.semanticRuleSetVersion,
+      "schemcp.semantic-rules/1"
+    );
+    const interfaceItems = (
+      interfaces.page as {
+        readonly items: readonly {
+          readonly type: string;
+          readonly activityStatus: string;
+          readonly missingSignals: readonly string[];
+        }[];
+      }
+    ).items;
+    assert.equal(interfaceItems.length, 1);
+    assert.equal(interfaceItems[0]?.type, "USB");
+    assert.equal(interfaceItems[0]?.activityStatus, "ACTIVE");
+    assert.deepEqual(interfaceItems[0]?.missingSignals, ["DM"]);
+
+    const powerTree = structured(
+      await client.callTool({
+        name: "get_power_tree",
+        arguments: { maxDepth: 8, limit: 50 }
+      })
+    );
+    assert.equal(powerTree.resourceType, "POWER");
+    assert.equal(powerTree.semanticRuleSetVersion, "schemcp.semantic-rules/1");
+    assert.equal(
+      (powerTree.edges as { readonly total: number }).total > 0,
+      true
+    );
+    assert.equal(powerTree.electricalTruth, "NOT_VERIFIED");
+
+    const clockTree = structured(
+      await client.callTool({
+        name: "get_clock_tree",
+        arguments: { maxDepth: 8, limit: 50 }
+      })
+    );
+    assert.equal(clockTree.resourceType, "CLOCK");
+    assert.equal((clockTree.edges as { readonly total: number }).total, 0);
+
+    const resetBootPaths = structured(
+      await client.callTool({
+        name: "get_reset_boot_paths",
+        arguments: { maxDepth: 8, limit: 50 }
+      })
+    );
+    assert.equal(resetBootPaths.resourceType, "RESET_BOOT");
+    assert.equal(
+      (resetBootPaths.edges as { readonly total: number }).total,
+      0
+    );
+
+    const mcuPinUsage = structured(
+      await client.callTool({
+        name: "get_mcu_pin_usage",
+        arguments: { designator: "U1", limit: 50 }
+      })
+    );
+    assert.equal(mcuPinUsage.mcuCount, 1);
+    assert.equal(mcuPinUsage.netlistBinding, "NOT_BOUND");
+    const mcuPins = mcuPinUsage.pins as {
+      readonly total: number;
+      readonly items: readonly {
+        readonly usageStatus: string;
+        readonly truthStatus: string;
+      }[];
+    };
+    assert.equal(mcuPins.total, 1);
+    assert.equal(mcuPins.items[0]?.usageStatus, "USED_CANDIDATE");
+    assert.equal(mcuPins.items[0]?.truthStatus, "CANDIDATE");
+
+    const contexts = structured(
+      await client.callTool({
+        name: "list_instance_contexts",
+        arguments: {}
+      })
+    );
+    const contextItems = (
+      contexts.page as {
+        readonly items: readonly {
+          readonly id: string;
+          readonly resolutionStatus: string;
+          readonly occurrenceCount: number;
+        }[];
+      }
+    ).items;
+    assert.equal(contextItems.length, 1);
+    assert.equal(contextItems[0]?.resolutionStatus, "RESOLVED_EXACT");
+    assert.equal(contextItems[0]?.occurrenceCount, 1);
+    const instanceContextId = contextItems[0]?.id;
+    assert.ok(instanceContextId);
+
+    const occurrenceComponents = structured(
+      await client.callTool({
+        name: "list_components",
+        arguments: { instanceContextId }
+      })
+    );
+    const occurrenceItems = (
+      occurrenceComponents.page as {
+        readonly items: readonly {
+          readonly designator: string;
+          readonly occurrence: { readonly instanceContextId: string };
+        }[];
+      }
+    ).items;
+    assert.equal(occurrenceItems.length, 1);
+    assert.equal(occurrenceItems[0]?.designator, "U1");
+    assert.equal(
+      occurrenceItems[0]?.occurrence.instanceContextId,
+      instanceContextId
+    );
+
+    const effectiveComponent = structured(
+      await client.callTool({
+        name: "get_component",
+        arguments: { designator: "U1", instanceContextId }
+      })
+    );
+    const effectiveLookup = effectiveComponent.lookup as {
+      readonly status: string;
+      readonly attributes: readonly {
+        readonly key: string;
+        readonly resolution: string;
+      }[];
+    };
+    assert.equal(effectiveLookup.status, "FOUND");
+    assert.equal(
+      effectiveLookup.attributes.find((attribute) => attribute.key === "Value")
+        ?.resolution,
+      "INSTANCE_OVERRIDE"
     );
 
     const closed = structured(

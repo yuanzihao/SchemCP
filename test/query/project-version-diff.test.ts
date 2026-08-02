@@ -3,7 +3,10 @@ import test from "node:test";
 import type {
   EdaIr,
   IrComponent,
+  IrComponentSemantic,
+  IrInterface,
   IrRecordProvenance,
+  IrResourceEdge,
   IrSchematicAnnotation,
   IrSchematicTable,
   IrSymbolText,
@@ -22,6 +25,39 @@ const PROVENANCE: IrRecordProvenance = {
   entry: "epru",
   line: 2
 };
+
+function effectiveState(id: string) {
+  return {
+    assembly: {
+      status: "UNKNOWN" as const,
+      reason: "ADD_INTO_BOM_MISSING" as const,
+      attributeKey: "Add into BOM" as const,
+      values: [],
+      resolution: "MISSING" as const,
+      evidenceClass: "DETERMINISTIC_RULE" as const,
+      truthStatus: "NOT_VERIFIED" as const,
+      semanticRuleSetVersion: "schemcp.semantic-rules/1" as const,
+      provenance: []
+    },
+    pinCompleteness: {
+      logicalComponentId: `logical-${id}`,
+      status: "UNKNOWN" as const,
+      reason: "SYMBOL_REFERENCE_MISSING" as const,
+      units: [{ componentId: id, pageId: "page-a", partId: "part-a" }],
+      declaredPartIds: [],
+      instantiatedPartIds: ["part-a"],
+      missingPartIds: [],
+      duplicatePartIds: [],
+      symbolPinCount: 0,
+      instantiatedPinCount: 0,
+      hiddenPinCount: 0,
+      evidenceClass: "DETERMINISTIC_RULE" as const,
+      truthStatus: "NOT_VERIFIED" as const,
+      semanticRuleSetVersion: "schemcp.semantic-rules/1" as const,
+      provenance: []
+    }
+  };
+}
 
 function component(
   id: string,
@@ -47,9 +83,106 @@ function component(
       state: "UNRESOLVED_DEVICE_REFERENCE_MISSING",
       componentAttributes: []
     },
+    ...effectiveState(id),
     attributes: [],
     provenance: { ...PROVENANCE, recordId: id, ticket },
     extensions: { easyeda: { ignoredVendorField: ticket } }
+  };
+}
+
+function componentSemantic(
+  componentId: string,
+  primaryRole: IrComponentSemantic["primaryRole"]
+): IrComponentSemantic {
+  return {
+    id: `semantic-${componentId}`,
+    componentId,
+    pageId: "page-a",
+    logicalComponentId: `logical-${componentId}`,
+    unitComponentIds: [componentId],
+    primaryRole,
+    roles: [
+      {
+        role: primaryRole,
+        ruleId: `fixture.${primaryRole.toLocaleLowerCase("en-US")}.v1`,
+        evidenceClass: "DETERMINISTIC_RULE",
+        truthStatus: primaryRole === "UNKNOWN" ? "UNRESOLVED" : "CANDIDATE",
+        semanticRuleSetVersion: "schemcp.semantic-rules/1",
+        provenance: [PROVENANCE]
+      }
+    ],
+    powerDomains: [],
+    ruleId: "component.semantic.aggregate.v1",
+    evidenceClass: "DETERMINISTIC_RULE",
+    truthStatus: primaryRole === "UNKNOWN" ? "UNRESOLVED" : "CANDIDATE",
+    semanticRuleSetVersion: "schemcp.semantic-rules/1",
+    provenance: [PROVENANCE]
+  };
+}
+
+function interfaceCandidate(
+  id: string,
+  status: IrInterface["status"]
+): IrInterface {
+  return {
+    id,
+    type: "SWD",
+    group: "SWD",
+    logicalComponentId: "logical-component-a",
+    componentRefs: [{ componentId: "component-a", pageId: "page-a" }],
+    status,
+    activityStatus: "ACTIVE",
+    signals: [],
+    requiredSignals: ["SWDIO", "SWCLK"],
+    missingSignals: status === "CANDIDATE" ? [] : ["SWCLK"],
+    unresolvedReasons: status === "UNRESOLVED" ? ["ASSEMBLY_UNKNOWN"] : [],
+    ruleId: "interface.swd.signal-set.v1",
+    evidenceClass: "DETERMINISTIC_RULE",
+    truthStatus: status === "UNRESOLVED" ? "UNRESOLVED" : "CANDIDATE",
+    semanticRuleSetVersion: "schemcp.semantic-rules/1",
+    provenance: [PROVENANCE]
+  };
+}
+
+function resourceEdge(
+  id: string,
+  status: IrResourceEdge["status"]
+): IrResourceEdge {
+  return {
+    id,
+    resourceType: "POWER",
+    kind: "POWER_CONVERSION",
+    direction: "DIRECTED",
+    from: {
+      kind: "NET",
+      id: "net-vin",
+      pageId: "page-a",
+      netName: "VIN"
+    },
+    to: {
+      kind: "NET",
+      id: "net-vout",
+      pageId: "page-a",
+      netName: "VOUT"
+    },
+    viaComponentRefs: [
+      {
+        componentId: "component-a",
+        pageId: "page-a",
+        logicalComponentId: "logical-component-a"
+      }
+    ],
+    pinInstanceIds: ["pin-in", "pin-out"],
+    activityStatus: "ACTIVE",
+    isolationStatus: "NOT_INDICATED",
+    status,
+    unresolvedReasons:
+      status === "UNRESOLVED" ? ["PIN_COMPLETENESS_NOT_COMPLETE"] : [],
+    ruleId: "resource.power.ldo-conversion.v1",
+    evidenceClass: "DETERMINISTIC_RULE",
+    truthStatus: status === "CANDIDATE" ? "CANDIDATE" : "UNRESOLVED",
+    semanticRuleSetVersion: "schemcp.semantic-rules/1",
+    provenance: [PROVENANCE]
   };
 }
 
@@ -214,6 +347,9 @@ function ir(
     readonly schematicAnnotations?: readonly IrSchematicAnnotation[];
     readonly schematicTables?: readonly IrSchematicTable[];
     readonly symbolTexts?: readonly IrSymbolText[];
+    readonly componentSemantics?: readonly IrComponentSemantic[];
+    readonly interfaces?: readonly IrInterface[];
+    readonly resourceEdges?: readonly IrResourceEdge[];
     readonly irSha256?: string;
     readonly archiveSha256?: string;
   } = {}
@@ -223,12 +359,15 @@ function ir(
   const schematicAnnotations = options.schematicAnnotations ?? [];
   const schematicTables = options.schematicTables ?? [];
   const symbolTexts = options.symbolTexts ?? [];
+  const componentSemantics = options.componentSemantics ?? [];
+  const interfaces = options.interfaces ?? [];
+  const resourceEdges = options.resourceEdges ?? [];
   return {
     schema: "schemcp.eda-ir",
-    schemaVersion: "1.0.0",
+    schemaVersion: "1.1.0",
     generator: {
       name: "@yuanzihao/schemcp",
-      version: "0.1.0"
+      version: "0.2.0"
     },
     source: {
       format: "EASYEDA_V3_LOG",
@@ -247,13 +386,26 @@ function ir(
     variants: [],
     componentGroups: [],
     instanceContexts: [],
+    componentOccurrences: [],
     components,
+    componentSemantics,
+    interfaces,
+    resourceNodes: [
+      ...new Map(
+        resourceEdges
+          .flatMap((item) => [item.from, item.to])
+          .map((item) => [item.id, item])
+      ).values()
+    ],
+    resourceEdges,
     symbols: [],
     symbolParts: [],
     symbolTexts,
     symbolPins: [],
     devices: [],
     wires,
+    buses: [],
+    busEntries: [],
     pinInstances: [],
     shortRelations: [],
     networkEndpointCandidates: [],
@@ -361,6 +513,45 @@ test("同一实体新增可选字段时显式报告字段变化", () => {
   });
   assert.equal(changes.total, 1);
   assert.deepEqual(changes.items[0]?.changedFields, ["deviceId"]);
+});
+
+test("工程差异覆盖组件语义、接口候选和资源边", () => {
+  const baselineSemantic = componentSemantic("component-a", "UNKNOWN");
+  const currentSemantic = componentSemantic("component-a", "MCU_MPU");
+  const baselineInterface = interfaceCandidate("interface-a", "PARTIAL_CANDIDATE");
+  const currentInterface = interfaceCandidate("interface-a", "CANDIDATE");
+  const baselineResource = resourceEdge("resource-a", "UNRESOLVED");
+  const currentResource = resourceEdge("resource-a", "CANDIDATE");
+  const index = new ProjectVersionDiffIndex(
+    ir({
+      componentSemantics: [baselineSemantic],
+      interfaces: [baselineInterface],
+      resourceEdges: [baselineResource]
+    }),
+    ir({
+      componentSemantics: [currentSemantic],
+      interfaces: [currentInterface],
+      resourceEdges: [currentResource],
+      irSha256: "d".repeat(64)
+    })
+  );
+  assert.equal(index.summary.byEntityKind.COMPONENT_SEMANTIC.modified, 1);
+  assert.equal(index.summary.byEntityKind.INTERFACE.modified, 1);
+  assert.equal(index.summary.byEntityKind.RESOURCE_NODE.unchanged, 2);
+  assert.equal(index.summary.byEntityKind.RESOURCE_EDGE.modified, 1);
+  assert.deepEqual(
+    index.listChanges({ entityKind: "COMPONENT_SEMANTIC" }).items[0]
+      ?.changedFields,
+    ["primaryRole", "roles", "truthStatus"]
+  );
+  assert.deepEqual(
+    index.listChanges({ entityKind: "INTERFACE" }).items[0]?.changedFields,
+    ["missingSignals", "status"]
+  );
+  assert.deepEqual(
+    index.listChanges({ entityKind: "RESOURCE_EDGE" }).items[0]?.changedFields,
+    ["status", "truthStatus", "unresolvedReasons"]
+  );
 });
 
 

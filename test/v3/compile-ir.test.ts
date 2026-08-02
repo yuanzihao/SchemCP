@@ -223,6 +223,7 @@ function createFixture(): V3Reducer {
     y: 2,
     length: 20,
     rotation: 0,
+    display: false,
     pinShape: "NONE"
   });
   attribute(reducer, symbol, 24, "pin-name", "pin-1", "Pin Name", "PA0");
@@ -253,7 +254,7 @@ test("将原理图、符号、引脚、器件和显式导线编译为可追溯 E
   const ir = compileV3ToEdaIr(reducer, ARCHIVE_SHA);
 
   assert.equal(ir.schema, "schemcp.eda-ir");
-  assert.equal(ir.schemaVersion, "1.0.0");
+  assert.equal(ir.schemaVersion, "1.1.0");
   assert.equal(ir.source.archiveSha256, ARCHIVE_SHA);
   assert.equal(ir.source.electricalTruth, "NOT_VERIFIED");
   assert.deepEqual(ir.summary, {
@@ -307,8 +308,42 @@ test("将原理图、符号、引脚、器件和显式导线编译为可追溯 E
     instanceContexts: 1,
     instanceDocumentsWithInvalidPath: 0,
     instanceContextsWithMissingSchematic: 0,
+    instanceContextsResolved: 0,
+    instanceContextsUnresolved: 1,
     instanceAttributeOverrides: 2,
+    instanceAttributeOverridesAppliedToComponents: 0,
+    instanceAttributeOverridesAppliedToPins: 0,
+    instanceAttributeOverridesUnresolved: 2,
+    componentOccurrences: 0,
+    componentOccurrencesPopulated: 0,
+    componentOccurrencesDnp: 0,
+    componentOccurrencesAssemblyUnknown: 0,
     components: 1,
+    componentsPopulated: 0,
+    componentsDnp: 0,
+    componentsAssemblyUnknown: 1,
+    componentsPinCompletenessComplete: 1,
+    componentsPinCompletenessPartial: 0,
+    componentsPinCompletenessUnknown: 0,
+    componentSemantics: 1,
+    componentSemanticsUnknownRole: 0,
+    componentPowerDomainCandidates: 0,
+    interfaces: 0,
+    interfacesCandidate: 0,
+    interfacesPartialCandidate: 0,
+    interfacesUnresolved: 0,
+    interfacesActive: 0,
+    interfacesExcludedDnp: 0,
+    interfacesAssemblyUnknown: 0,
+    resourceNodes: 0,
+    resourceEdges: 0,
+    resourceEdgesPower: 0,
+    resourceEdgesClock: 0,
+    resourceEdgesResetBoot: 0,
+    resourceEdgesMcuPin: 0,
+    resourceEdgesActive: 0,
+    resourceEdgesExcludedDnp: 0,
+    resourceEdgesAssemblyUnknown: 0,
     componentsWithDesignator: 1,
     componentsWithDevice: 1,
     componentsWithSymbol: 1,
@@ -327,10 +362,19 @@ test("将原理图、符号、引脚、器件和显式导线编译为可追溯 E
     symbolTextsWithPartNotFound: 0,
     symbolPins: 1,
     symbolPinsWithNumber: 1,
+    symbolPinsHidden: 1,
     devices: 1,
     wires: 1,
     wiresWithExplicitNet: 1,
     wireSegments: 1,
+    buses: 0,
+    busesWithExplicitNet: 0,
+    busesWithEmptyEntrySet: 0,
+    busSegments: 0,
+    busEntries: 0,
+    busEntriesEmbedded: 0,
+    busEntriesSeparate: 0,
+    busEntriesUnbound: 0,
     pinInstances: 1,
     pinInstancesWithUniqueExplicitNetCandidate: 0,
     pinInstancesWithConflictingExplicitNetCandidates: 0,
@@ -416,13 +460,26 @@ test("将原理图、符号、引脚、器件和显式导线编译为可追溯 E
   assert.deepEqual(ir.instanceContexts, [
     {
       id: "schematic-1_$5|block-a_$01",
+      pathEncoding: "OFFICIAL_SHEET_NUMBER_PIPE_BLOCK_ID",
       schematicId: "schematic-1",
-      blockPath: [{ sheetNumber: "5", blockSymbolId: "block-a" }],
+      blockPath: [
+        {
+          pageReference: "5",
+          sheetNumber: "5",
+          blockSymbolId: "block-a",
+          targetPageId: "page-1",
+          resolutionStatus: "SOURCE_PAGE_NOT_FOUND"
+        }
+      ],
+      terminalPageReference: "01",
       terminalSheetNumber: "01",
+      terminalPageId: "page-1",
+      resolutionStatus: "SOURCE_PAGE_NOT_FOUND",
       overrides: [
         {
           targetPrimitiveId: "component-1",
           attributes: { Designator: "U1A" },
+          applicationStatus: "CONTEXT_NOT_RESOLVED",
           provenance: {
             documentId: "schematic-1_$5|block-a_$01",
             documentType: "INSTANCE",
@@ -438,6 +495,7 @@ test("将原理图、符号、引脚、器件和显式导线编译为可追溯 E
         {
           targetPrimitiveId: "component-1pin-1",
           attributes: { NO_CONNECT: "yes" },
+          applicationStatus: "CONTEXT_NOT_RESOLVED",
           provenance: {
             documentId: "schematic-1_$5|block-a_$01",
             documentType: "INSTANCE",
@@ -465,6 +523,8 @@ test("将原理图、符号、引脚、器件和显式导线编译为可追溯 E
   assert.equal(component.symbolBinding.state, "BOUND_DEVICE_DEFAULT");
   assert.equal(component.symbolBinding.deviceDefault?.value, "symbol-1");
   assert.equal(component.footprintBinding.state, "BOUND_COMPONENT_OVERRIDE");
+  assert.equal(component.pinCompleteness.status, "COMPLETE");
+  assert.equal(component.pinCompleteness.hiddenPinCount, 1);
   assert.equal(
     component.footprintBinding.deviceDefault?.value,
     "footprint-default"
@@ -487,6 +547,7 @@ test("将原理图、符号、引脚、器件和显式导线编译为可追溯 E
   assert.equal(pin.name, "PA0");
   assert.equal(pin.number, "1");
   assert.equal(pin.electricalType, "BI");
+  assert.equal(pin.display, false);
 
   const wire = ir.wires[0];
   assert.ok(wire);
@@ -507,6 +568,7 @@ test("将原理图、符号、引脚、器件和显式导线编译为可追溯 E
     ["NO_CONNECT", "NO_CONNECT"]
   );
   assert.equal(ir.pinInstances[0]?.endpointKind, "PART_SYMBOL_PIN");
+  assert.equal(ir.pinInstances[0]?.display, false);
   assert.match(ir.irSha256, /^[a-f0-9]{64}$/);
   assert.deepEqual(ir, compileV3ToEdaIr(reducer, ARCHIVE_SHA));
 });
@@ -544,8 +606,8 @@ test("原理图页 TEXT 只保留显式内容与原始位置，不执行语义�
   });
 
   const ir = compileV3ToEdaIr(reducer, ARCHIVE_SHA);
-  assert.equal(ir.schemaVersion, "1.0.0");
-  assert.equal(ir.generator.version, "0.1.0");
+  assert.equal(ir.schemaVersion, "1.1.0");
+  assert.equal(ir.generator.version, "0.2.0");
   assert.equal(ir.summary.schematicAnnotations, 2);
   assert.equal(ir.summary.schematicAnnotationsWithExplicitText, 1);
   assert.equal(ir.summary.schematicAnnotationsWithExplicitEmpty, 1);
@@ -634,8 +696,8 @@ test("符号 TEXT 保留显式内容并严格绑定同文档 PART", () => {
   });
 
   const ir = compileV3ToEdaIr(reducer, ARCHIVE_SHA);
-  assert.equal(ir.schemaVersion, "1.0.0");
-  assert.equal(ir.generator.version, "0.1.0");
+  assert.equal(ir.schemaVersion, "1.1.0");
+  assert.equal(ir.generator.version, "0.2.0");
   assert.equal(ir.summary.symbolTexts, 3);
   assert.equal(ir.summary.symbolTextsWithExplicitText, 2);
   assert.equal(ir.summary.symbolTextsWithExplicitEmpty, 1);
@@ -801,6 +863,185 @@ test("兼容官方 WIRE.dots 表示并保留每段来源", () => {
   assert.equal(
     ir.wires[0]?.segments.every(
       (segment) => segment.provenance.recordId === "wire-dots"
+    ),
+    true
+  );
+});
+
+test("同时建模官方独立 BUSENTRY 与当前导出的内嵌 busEntry", () => {
+  const reducer = new V3Reducer(LIMITS);
+  const page = enter(reducer, "page-bus", "SCH_PAGE", 1);
+  accept(reducer, page, 2, "META", undefined, { title: "Bus" });
+  accept(reducer, page, 3, "BUS", "bus-observed", {
+    groupId: "",
+    locked: false,
+    zIndex: 1,
+    busEntry: {
+      "entry-observed-b": {
+        order: 1,
+        pointX: 20,
+        pointY: 30,
+        rotation: 90,
+        futureField: "preserved"
+      },
+      "entry-observed-a": {
+        order: 0,
+        pointX: 10,
+        pointY: 30,
+        rotation: 90
+      }
+    }
+  });
+  attribute(
+    reducer,
+    page,
+    4,
+    "net-observed",
+    "bus-observed",
+    "NET",
+    "DATA[7:0]"
+  );
+  accept(reducer, page, 5, "BUS", "bus-official", {
+    groupId: "",
+    locked: false,
+    zIndex: 2,
+    dots: [[0, 0, 0, 20, 20, 20]]
+  });
+  attribute(
+    reducer,
+    page,
+    6,
+    "net-official",
+    "bus-official",
+    "NET",
+    "CTRL[1:0]"
+  );
+  accept(reducer, page, 7, "BUSENTRY", "entry-official-bound", {
+    parentId: "bus-official",
+    busGroupId: 0,
+    order: 0,
+    pointX: 0,
+    pointY: 10,
+    rotation: 180
+  });
+  accept(reducer, page, 8, "BUSENTRY", "entry-official-unbound", {
+    busGroupId: 1,
+    order: 1,
+    pointX: 0,
+    pointY: 20,
+    rotation: 180
+  });
+
+  const ir = compileV3ToEdaIr(reducer, ARCHIVE_SHA);
+
+  assert.equal(ir.summary.buses, 2);
+  assert.equal(ir.summary.busesWithExplicitNet, 2);
+  assert.equal(ir.summary.busSegments, 2);
+  assert.equal(ir.summary.busEntries, 4);
+  assert.equal(ir.summary.busEntriesEmbedded, 2);
+  assert.equal(ir.summary.busEntriesSeparate, 2);
+  assert.equal(ir.summary.busEntriesUnbound, 1);
+  assert.equal(ir.unboundAttributes.length, 0);
+  const observed = ir.buses.find((bus) => bus.id === "bus-observed");
+  assert.equal(observed?.encoding, "OBSERVED_EMBEDDED_BUSENTRY_MAP");
+  assert.equal(observed?.explicitNetName, "DATA[7:0]");
+  assert.equal(observed?.memberExpansion, "NOT_PERFORMED");
+  assert.deepEqual(observed?.entryIds, [
+    "entry-observed-a",
+    "entry-observed-b"
+  ]);
+  assert.equal(
+    ir.busEntries.find((entry) => entry.id === "entry-observed-b")
+      ?.extensions.easyeda.futureField,
+    "preserved"
+  );
+  const official = ir.buses.find((bus) => bus.id === "bus-official");
+  assert.equal(
+    official?.encoding,
+    "OFFICIAL_DOTS_WITH_SEPARATE_BUSENTRY_RECORDS"
+  );
+  assert.equal(official?.segments.length, 2);
+  assert.deepEqual(official?.entryIds, ["entry-official-bound"]);
+  assert.equal(
+    ir.busEntries.find((entry) => entry.id === "entry-official-unbound")
+      ?.associationStatus,
+    "SEPARATE_RECORD_WITHOUT_EXPLICIT_BUS_ID"
+  );
+});
+
+test("空 BUS 成员表可见，损坏入口和重复 order 使用稳定诊断", () => {
+  const reducer = new V3Reducer(LIMITS);
+  const page = enter(reducer, "page-bus-invalid", "SCH_PAGE", 1);
+  accept(reducer, page, 2, "META", undefined, { title: "Bus invalid" });
+  accept(reducer, page, 3, "BUS", "bus-empty", {
+    busEntry: {}
+  });
+  attribute(reducer, page, 4, "net-empty", "bus-empty", "NET", "EMPTY[]");
+  accept(reducer, page, 5, "BUS", "bus-partial", {
+    busEntry: {
+      "entry-a": {
+        order: 0,
+        pointX: 1,
+        pointY: 2,
+        rotation: 0
+      },
+      "entry-b": {
+        order: 0,
+        pointX: 3,
+        pointY: 4,
+        rotation: 0
+      },
+      "entry-invalid": {
+        order: 2,
+        pointX: 5,
+        rotation: 0
+      }
+    }
+  });
+  attribute(
+    reducer,
+    page,
+    6,
+    "net-partial",
+    "bus-partial",
+    "NET",
+    "PARTIAL[1:0]"
+  );
+  accept(reducer, page, 7, "BUS", "bus-invalid", {
+    busEntry: []
+  });
+  accept(reducer, page, 8, "BUSENTRY", "entry-invalid-separate", {
+    order: 0,
+    pointX: 0,
+    pointY: 0,
+    rotation: 0
+  });
+
+  const ir = compileV3ToEdaIr(reducer, ARCHIVE_SHA);
+
+  assert.equal(ir.summary.buses, 2);
+  assert.equal(ir.summary.busesWithEmptyEntrySet, 1);
+  assert.equal(ir.summary.busEntries, 2);
+  assert.equal(ir.summary.unmodeledRecords, 2);
+  assert.equal(
+    ir.diagnostics.some(
+      (diagnostic) =>
+        diagnostic.code === "IR_INVALID_EMBEDDED_BUS_ENTRY" &&
+        diagnostic.count === 1
+    ),
+    true
+  );
+  assert.equal(
+    ir.diagnostics.some(
+      (diagnostic) =>
+        diagnostic.code === "IR_BUS_ENTRY_ORDER_DUPLICATE" &&
+        diagnostic.count === 1
+    ),
+    true
+  );
+  assert.equal(
+    ir.diagnostics.some(
+      (diagnostic) => diagnostic.code === "IR_INVALID_SEPARATE_BUS_ENTRY"
     ),
     true
   );
@@ -1329,8 +1570,8 @@ test("编译 SCH_PAGE/SYMBOL 五类显式图形并兼容两种 POLY 点编码", 
   });
 
   const ir = compileV3ToEdaIr(reducer, ARCHIVE_SHA);
-  assert.equal(ir.schemaVersion, "1.0.0");
-  assert.equal(ir.generator.version, "0.1.0");
+  assert.equal(ir.schemaVersion, "1.1.0");
+  assert.equal(ir.generator.version, "0.2.0");
   assert.equal(ir.summary.schematicGraphicPrimitives, 7);
   assert.equal(ir.summary.schematicGraphicPrimitivesInPages, 3);
   assert.equal(ir.summary.schematicGraphicPrimitivesInSymbols, 4);
@@ -1446,5 +1687,128 @@ test("拒绝非法原理图图形并保留来源", () => {
         diagnostic.recordType === "CIRCLE"
     )?.count,
     1
+  );
+});
+
+test("解析当前导出的层级实例路径并应用组件实例覆盖", () => {
+  const reducer = new V3Reducer(LIMITS);
+  const schematic = enter(reducer, "sch-hierarchy", "SCH", 1);
+  accept(reducer, schematic, 2, "META", undefined, {
+    name: "Hierarchy",
+    board: ""
+  });
+
+  const blockSymbol = enter(reducer, "symbol-block", "SYMBOL", 3);
+  accept(reducer, blockSymbol, 4, "META", undefined, {
+    title: "Block",
+    docType: 17
+  });
+
+  const parent = enter(reducer, "page-parent", "SCH_PAGE", 5);
+  accept(reducer, parent, 6, "META", undefined, {
+    name: "Parent",
+    schematic: "sch-hierarchy"
+  });
+  accept(reducer, parent, 7, "COMPONENT", "block-1", {
+    partId: "",
+    positionX: 0,
+    positionY: 0,
+    rotation: 0,
+    isMirror: false
+  });
+  attribute(
+    reducer,
+    parent,
+    8,
+    "attr-block-symbol",
+    "block-1",
+    "Symbol",
+    "symbol-block"
+  );
+
+  const child = enter(reducer, "page-child", "SCH_PAGE", 9);
+  accept(reducer, child, 10, "META", undefined, {
+    name: "Child",
+    schematic: "sch-hierarchy"
+  });
+  accept(reducer, child, 11, "COMPONENT", "component-child", {
+    partId: "",
+    positionX: 10,
+    positionY: 20,
+    rotation: 0,
+    isMirror: false
+  });
+  attribute(
+    reducer,
+    child,
+    12,
+    "attr-child-designator",
+    "component-child",
+    "Designator",
+    "R1"
+  );
+
+  const instance = enter(
+    reducer,
+    "sch-hierarchy_$page-parent~block-1_$page-child",
+    "INSTANCE",
+    13
+  );
+  accept(
+    reducer,
+    instance,
+    14,
+    "INSTANCE_ATTR",
+    "component-child",
+    { Designator: "R101", Value: "10k" }
+  );
+  accept(reducer, instance, 15, "INSTANCE_ATTR", "missing-target", {
+    Value: "orphan"
+  });
+
+  const ir = compileV3ToEdaIr(reducer, ARCHIVE_SHA);
+  assert.equal(ir.summary.instanceContextsResolved, 1);
+  assert.equal(ir.summary.instanceContextsUnresolved, 0);
+  assert.equal(ir.summary.instanceAttributeOverridesAppliedToComponents, 1);
+  assert.equal(ir.summary.instanceAttributeOverridesUnresolved, 1);
+  assert.equal(ir.summary.componentOccurrences, 1);
+  assert.deepEqual(ir.instanceContexts[0], {
+    id: "sch-hierarchy_$page-parent~block-1_$page-child",
+    pathEncoding: "OBSERVED_PAGE_ID_TILDE_BLOCK_ID",
+    schematicId: "sch-hierarchy",
+    blockPath: [
+      {
+        pageReference: "page-parent",
+        blockSymbolId: "block-1",
+        sourcePageId: "page-parent",
+        targetPageId: "page-child",
+        resolutionStatus: "RESOLVED_EXACT"
+      }
+    ],
+    terminalPageReference: "page-child",
+    terminalPageId: "page-child",
+    resolutionStatus: "RESOLVED_EXACT",
+    overrides: ir.instanceContexts[0]?.overrides,
+    provenance: [{ client: "client-a", entry: "epru-1", line: 13 }]
+  });
+  assert.equal(
+    ir.instanceContexts[0]?.overrides[0]?.applicationStatus,
+    "APPLIED_COMPONENT_OCCURRENCE"
+  );
+  assert.equal(
+    ir.instanceContexts[0]?.overrides[1]?.applicationStatus,
+    "TARGET_NOT_FOUND"
+  );
+  assert.equal(ir.componentOccurrences[0]?.designator, "R101");
+  assert.deepEqual(
+    ir.componentOccurrences[0]?.attributes.find(
+      (attribute) => attribute.key === "Value"
+    ),
+    {
+      key: "Value",
+      values: ["10k"],
+      resolution: "INSTANCE_OVERRIDE",
+      provenance: [ir.instanceContexts[0]?.overrides[0]?.provenance]
+    }
   );
 });

@@ -38,6 +38,39 @@ const PIN_SOURCE: IrRecordProvenance = {
   line: 2
 };
 
+function effectiveState(id: string) {
+  return {
+    assembly: {
+      status: "UNKNOWN" as const,
+      reason: "ADD_INTO_BOM_MISSING" as const,
+      attributeKey: "Add into BOM" as const,
+      values: [],
+      resolution: "MISSING" as const,
+      evidenceClass: "DETERMINISTIC_RULE" as const,
+      truthStatus: "NOT_VERIFIED" as const,
+      semanticRuleSetVersion: "schemcp.semantic-rules/1" as const,
+      provenance: []
+    },
+    pinCompleteness: {
+      logicalComponentId: `logical-${id}`,
+      status: "COMPLETE" as const,
+      reason: "SINGLE_SYMBOL_PART_COMPLETE" as const,
+      units: [{ componentId: id, pageId: "page-a", partId: "part-a" }],
+      declaredPartIds: ["part-a"],
+      instantiatedPartIds: ["part-a"],
+      missingPartIds: [],
+      duplicatePartIds: [],
+      symbolPinCount: 1,
+      instantiatedPinCount: 1,
+      hiddenPinCount: 0,
+      evidenceClass: "DETERMINISTIC_RULE" as const,
+      truthStatus: "NOT_VERIFIED" as const,
+      semanticRuleSetVersion: "schemcp.semantic-rules/1" as const,
+      provenance: []
+    }
+  };
+}
+
 function component(
   id: string,
   position: { readonly x: number; readonly y: number }
@@ -62,6 +95,7 @@ function component(
       state: "UNRESOLVED_DEVICE_REFERENCE_MISSING",
       componentAttributes: []
     },
+    ...effectiveState(id),
     attributes: [],
     provenance: { ...COMPONENT_SOURCE, recordId: id },
     extensions: { easyeda: {} }

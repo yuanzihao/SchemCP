@@ -6,6 +6,13 @@ import {
 } from "../connectivity/compile-pin-instances.js";
 import { compileShortRelations } from "../connectivity/compile-short-relations.js";
 import {
+  resolveInstanceContexts,
+  type RawInstanceContext
+} from "../hierarchy/resolve-instance-contexts.js";
+import { compileEffectiveComponentStates } from "../variant/effective-component-state.js";
+import { compileSemantics } from "../semantics/compile-semantics.js";
+import { compileResources } from "../resources/compile-resources.js";
+import {
   compileComponentLibraryBindings,
   type ComponentBeforeLibraryBindings
 } from "./component-library-bindings.js";
@@ -13,6 +20,9 @@ import type {
   EdaIr,
   IrAttribute,
   IrBoard,
+  IrBus,
+  IrBusEntry,
+  IrBusSegment,
   IrComponentGroup,
   IrComponentGroupOverride,
   IrComponentGroupVariantIndex,
@@ -20,8 +30,6 @@ import type {
   IrDiagnostic,
   IrDocument,
   IrEasyEdaExtension,
-  IrInstanceAttributeOverride,
-  IrInstanceContext,
   IrProjectConfiguration,
   IrRecordProvenance,
   IrSchematic,
@@ -89,6 +97,7 @@ const MAX_SCHEMATIC_TABLE_ROWS = 256;
 const MAX_SCHEMATIC_TABLE_COLUMNS = 256;
 const MAX_SCHEMATIC_TABLE_CELLS = 16 * 1024;
 const MAX_SCHEMATIC_GRAPHIC_POINTS = 64 * 1024;
+const MAX_BUS_ENTRIES_PER_BUS = 1_024;
 const SCHEMATIC_GRAPHIC_KINDS = new Set<IrSchematicGraphicKind>([
   "POLY",
   "RECT",
@@ -119,6 +128,12 @@ function isJsonValue(value: unknown): value is JsonValue {
     );
   }
   return false;
+}
+
+function isObjectRecord(
+  value: unknown
+): value is Readonly<Record<string, unknown>> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
 function asJsonObject(value: Readonly<Record<string, unknown>>): JsonObject {
@@ -1119,10 +1134,11 @@ function compileSchematicTables(
 
 function pointSegmentsFromDots(
   document: ReducedV3DocumentSnapshot,
-  wire: ReducedV3Record,
-  wireId: string,
+  primitive: ReducedV3Record,
+  primitiveId: string,
   inner: Readonly<Record<string, unknown>>,
-  onInvalid: () => void
+  onInvalid: () => void,
+  representation: "WIRE_DOTS" | "BUS_DOTS"
 ): readonly IrWireSegment[] {
   if (!Object.hasOwn(inner, "dots")) {
     return [];
@@ -1144,7 +1160,7 @@ function pointSegmentsFromDots(
     }
     for (let index = 0; index + 3 < path.length; index += 2) {
       result.push({
-        id: `${wireId}:dots:${pathIndex}:${index / 2}`,
+        id: `${primitiveId}:dots:${pathIndex}:${index / 2}`,
         start: {
           x: path[index] as number,
           y: path[index + 1] as number
@@ -1153,10 +1169,10 @@ function pointSegmentsFromDots(
           x: path[index + 2] as number,
           y: path[index + 3] as number
         },
-        provenance: sourceOf(document, wire),
+        provenance: sourceOf(document, primitive),
         extensions: {
           easyeda: {
-            representation: "WIRE_DOTS",
+            representation,
             pathIndex,
             segmentIndex: index / 2
           }
@@ -1165,6 +1181,62 @@ function pointSegmentsFromDots(
     }
   }
   return result;
+}
+
+interface ValidBusEntryFields {
+  readonly order: number;
+  readonly busGroupId?: number;
+  readonly point: {
+    readonly x: number;
+    readonly y: number;
+  };
+  readonly rotation: number;
+}
+
+function busEntryFields(
+  inner: Readonly<Record<string, unknown>>,
+  requireBusGroupId: boolean
+): ValidBusEntryFields | undefined {
+  const order = inner.order;
+  const busGroupId = inner.busGroupId;
+  const pointX = inner.pointX;
+  const pointY = inner.pointY;
+  const rotation = inner.rotation;
+  if (
+    !Number.isSafeInteger(order) ||
+    (order as number) < 0 ||
+    typeof pointX !== "number" ||
+    !Number.isFinite(pointX) ||
+    typeof pointY !== "number" ||
+    !Number.isFinite(pointY) ||
+    typeof rotation !== "number" ||
+    !Number.isFinite(rotation) ||
+    (requireBusGroupId &&
+      (!Number.isSafeInteger(busGroupId) || (busGroupId as number) < 0)) ||
+    (!requireBusGroupId &&
+      busGroupId !== undefined &&
+      (!Number.isSafeInteger(busGroupId) || (busGroupId as number) < 0))
+  ) {
+    return undefined;
+  }
+  return {
+    order: order as number,
+    ...(busGroupId === undefined
+      ? {}
+      : { busGroupId: busGroupId as number }),
+    point: { x: pointX, y: pointY },
+    rotation
+  };
+}
+
+function compareBusEntry(left: IrBusEntry, right: IrBusEntry): number {
+  return (
+    compareText(left.pageId, right.pageId) ||
+    compareText(left.busId ?? "", right.busId ?? "") ||
+    left.order - right.order ||
+    compareText(left.id, right.id) ||
+    compareText(left.encoding, right.encoding)
+  );
 }
 
 function compilePage(
@@ -1438,15 +1510,22 @@ function compilePage(
         recordType: "WIRE"
       });
     }
-    const segments = pointSegmentsFromDots(document, selected, id, inner, () => {
-      addDiagnostic(state.diagnostics, {
-        code: "IR_INVALID_WIRE_DOTS",
-        severity: "error",
-        message: "WIRE.dots 包含非法路径，相关路径未编译。",
-        documentType: document.docType,
-        recordType: "WIRE"
-      });
-    });
+    const segments = pointSegmentsFromDots(
+      document,
+      selected,
+      id,
+      inner,
+      () => {
+        addDiagnostic(state.diagnostics, {
+          code: "IR_INVALID_WIRE_DOTS",
+          severity: "error",
+          message: "WIRE.dots 包含非法路径，相关路径未编译。",
+          documentType: document.docType,
+          recordType: "WIRE"
+        });
+      },
+      "WIRE_DOTS"
+    );
     const childSegments: IrWireSegment[] = [];
     for (const line of lineGroups.get(id) ?? []) {
       const lineInner = innerOf(line);
@@ -1516,6 +1595,234 @@ function compilePage(
     );
   }
 
+  const busIds = new Set<string>();
+  const busEntryIdsByBus = new Map<string, string[]>();
+  for (const selected of recordsOfType(records, "BUS")) {
+    const inner = innerOf(selected);
+    const id = recordId(selected);
+    if (inner === undefined || id === undefined) {
+      unmodeled(state.unmodeledRecords, document, selected);
+      addDiagnostic(state.diagnostics, {
+        code: "IR_INVALID_BUS",
+        severity: "error",
+        message: "BUS 缺少 id 或对象数据，未进入显式总线模型。",
+        documentType: document.docType,
+        recordType: "BUS"
+      });
+      continue;
+    }
+    const hasDots = Object.hasOwn(inner, "dots");
+    const hasEmbeddedEntries = Object.hasOwn(inner, "busEntry");
+    if (
+      (!hasDots && !hasEmbeddedEntries) ||
+      (hasEmbeddedEntries && !isObjectRecord(inner.busEntry))
+    ) {
+      unmodeled(state.unmodeledRecords, document, selected);
+      addDiagnostic(state.diagnostics, {
+        code: "IR_INVALID_BUS",
+        severity: "error",
+        message:
+          "BUS 既没有官方 dots，也没有有效的内嵌 busEntry 对象，未进入显式总线模型。",
+        documentType: document.docType,
+        recordType: "BUS"
+      });
+      continue;
+    }
+    const embeddedEntries = hasEmbeddedEntries
+      ? Object.entries(inner.busEntry as Readonly<Record<string, unknown>>)
+      : [];
+    if (embeddedEntries.length > MAX_BUS_ENTRIES_PER_BUS) {
+      unmodeled(state.unmodeledRecords, document, selected);
+      addDiagnostic(state.diagnostics, {
+        code: "IR_BUS_ENTRY_LIMIT_EXCEEDED",
+        severity: "error",
+        message: `单条 BUS 的内嵌入口超过 ${MAX_BUS_ENTRIES_PER_BUS} 项安全上限，整条记录未进入模型。`,
+        documentType: document.docType,
+        recordType: "BUS"
+      });
+      continue;
+    }
+
+    busIds.add(id);
+    const attributes = attributesFor(attributesByParent, id);
+    const explicitNetName = uniqueAttributeString(attributes, "NET", () => {
+      addDiagnostic(state.diagnostics, {
+        code: "IR_ATTRIBUTE_CONFLICT",
+        severity: "error",
+        message: "同一总线存在不同 NET 属性值，未选择任一网络名。",
+        documentType: document.docType,
+        recordType: "ATTR"
+      });
+    });
+    if (explicitNetName === undefined) {
+      addDiagnostic(state.diagnostics, {
+        code: "IR_BUS_EXPLICIT_NET_MISSING",
+        severity: "warning",
+        message:
+          "总线没有唯一的显式 NET 属性；不会展开名称或猜测成员网络。",
+        documentType: document.docType,
+        recordType: "BUS"
+      });
+    }
+    const segments: readonly IrBusSegment[] = hasDots
+      ? pointSegmentsFromDots(
+          document,
+          selected,
+          id,
+          inner,
+          () => {
+            addDiagnostic(state.diagnostics, {
+              code: "IR_INVALID_BUS_DOTS",
+              severity: "error",
+              message: "BUS.dots 包含非法路径，相关路径未编译。",
+              documentType: document.docType,
+              recordType: "BUS"
+            });
+          },
+          "BUS_DOTS"
+        )
+      : [];
+    const entryIds: string[] = [];
+    const validEmbeddedEntries: IrBusEntry[] = [];
+    for (const [entryId, rawEntry] of embeddedEntries) {
+      const fields = isObjectRecord(rawEntry)
+        ? busEntryFields(rawEntry, false)
+        : undefined;
+      if (entryId === "" || fields === undefined || !isObjectRecord(rawEntry)) {
+        addDiagnostic(state.diagnostics, {
+          code: "IR_INVALID_EMBEDDED_BUS_ENTRY",
+          severity: "error",
+          message:
+            "BUS.busEntry 成员缺少非空 ID、有效 order、坐标或旋转；该入口未进入模型。",
+          documentType: document.docType,
+          recordType: "BUS"
+        });
+        continue;
+      }
+      entryIds.push(entryId);
+      validEmbeddedEntries.push({
+        id: entryId,
+        pageId: document.uuid,
+        busId: id,
+        encoding: "OBSERVED_EMBEDDED_BUSENTRY_MAP_ITEM",
+        associationStatus: "EMBEDDED_IN_BUS_RECORD",
+        ...fields,
+        evidenceClass: "EXPLICIT_PROJECT_RECORD",
+        truthStatus: "NOT_VERIFIED",
+        provenance: sourceOf(document, selected),
+        extensions: extension(rawEntry)
+      });
+    }
+    validEmbeddedEntries.sort(compareBusEntry);
+    entryIds.splice(
+      0,
+      entryIds.length,
+      ...validEmbeddedEntries.map((entry) => entry.id)
+    );
+    const duplicateOrderCount =
+      validEmbeddedEntries.length -
+      new Set(validEmbeddedEntries.map((entry) => entry.order)).size;
+    if (duplicateOrderCount > 0) {
+      addDiagnostic(
+        state.diagnostics,
+        {
+          code: "IR_BUS_ENTRY_ORDER_DUPLICATE",
+          severity: "warning",
+          message:
+            "同一 BUS 的多个入口使用相同 order；已保留全部入口并用显式 ID 稳定排序。",
+          documentType: document.docType,
+          recordType: "BUS"
+        },
+        duplicateOrderCount
+      );
+    }
+    state.busEntries.push(...validEmbeddedEntries);
+    busEntryIdsByBus.set(id, entryIds);
+    state.buses.push({
+      id,
+      pageId: document.uuid,
+      encoding:
+        hasDots && hasEmbeddedEntries
+          ? "HYBRID_DOTS_WITH_EMBEDDED_BUSENTRY_MAP"
+          : hasEmbeddedEntries
+            ? "OBSERVED_EMBEDDED_BUSENTRY_MAP"
+            : "OFFICIAL_DOTS_WITH_SEPARATE_BUSENTRY_RECORDS",
+      ...(explicitNetName === undefined ? {} : { explicitNetName }),
+      segments,
+      entryIds,
+      attributes,
+      memberExpansion: "NOT_PERFORMED",
+      evidenceClass: "EXPLICIT_PROJECT_RECORD",
+      truthStatus: "NOT_VERIFIED",
+      provenance: sourceOf(document, selected),
+      extensions: extension(inner)
+    });
+  }
+
+  for (const selected of recordsOfType(records, "BUSENTRY")) {
+    const inner = innerOf(selected);
+    const id = recordId(selected);
+    const fields = inner === undefined ? undefined : busEntryFields(inner, true);
+    if (inner === undefined || id === undefined || fields === undefined) {
+      unmodeled(state.unmodeledRecords, document, selected);
+      addDiagnostic(state.diagnostics, {
+        code: "IR_INVALID_SEPARATE_BUS_ENTRY",
+        severity: "error",
+        message:
+          "独立 BUSENTRY 缺少 id、busGroupId、order、有限坐标或旋转，未进入模型。",
+        documentType: document.docType,
+        recordType: "BUSENTRY"
+      });
+      continue;
+    }
+    const explicitParentId = optionalNonEmptyString(inner, "parentId");
+    const resolvedBusId =
+      explicitParentId !== undefined && busIds.has(explicitParentId)
+        ? explicitParentId
+        : undefined;
+    const associationStatus =
+      resolvedBusId !== undefined
+        ? ("EXPLICIT_PARENT_ID" as const)
+        : explicitParentId === undefined
+          ? ("SEPARATE_RECORD_WITHOUT_EXPLICIT_BUS_ID" as const)
+          : ("EXPLICIT_PARENT_ID_NOT_FOUND" as const);
+    if (associationStatus === "EXPLICIT_PARENT_ID_NOT_FOUND") {
+      addDiagnostic(state.diagnostics, {
+        code: "IR_BUSENTRY_PARENT_NOT_FOUND",
+        severity: "warning",
+        message:
+          "独立 BUSENTRY 的显式 parentId 未命中同页 BUS；入口保持未绑定，不用几何猜测归属。",
+        documentType: document.docType,
+        recordType: "BUSENTRY"
+      });
+    }
+    if (resolvedBusId !== undefined) {
+      busEntryIdsByBus.get(resolvedBusId)?.push(id);
+    }
+    state.busEntries.push({
+      id,
+      pageId: document.uuid,
+      ...(resolvedBusId === undefined ? {} : { busId: resolvedBusId }),
+      encoding: "OFFICIAL_SEPARATE_BUSENTRY_RECORD",
+      associationStatus,
+      ...fields,
+      evidenceClass: "EXPLICIT_PROJECT_RECORD",
+      truthStatus: "NOT_VERIFIED",
+      provenance: sourceOf(document, selected),
+      extensions: extension(inner)
+    });
+  }
+  for (const [busId, entryIds] of busEntryIdsByBus) {
+    const orderedIds = state.busEntries
+      .filter(
+        (entry) =>
+          entry.pageId === document.uuid && entry.busId === busId
+      )
+      .sort(compareBusEntry)
+      .map((entry) => entry.id);
+    entryIds.splice(0, entryIds.length, ...orderedIds);
+  }
+
   const sortedComponentIds = componentIds.sort(
     (left, right) => right.length - left.length || compareText(left, right)
   );
@@ -1524,7 +1831,12 @@ function compilePage(
     (left, right) => right - left
   );
   for (const [parentId, items] of attributesByParent) {
-    if (parentId === "" || componentIdSet.has(parentId) || wireIds.has(parentId)) {
+    if (
+      parentId === "" ||
+      componentIdSet.has(parentId) ||
+      wireIds.has(parentId) ||
+      busIds.has(parentId)
+    ) {
       continue;
     }
     const matchingComponents = componentIdLengths
@@ -1580,6 +1892,8 @@ function compilePage(
     "ATTR",
     "WIRE",
     "LINE",
+    "BUS",
+    "BUSENTRY",
     "POLY",
     "RECT",
     "ARC",
@@ -1830,6 +2144,8 @@ function compileSymbol(
       typeof inner.pinShape === "number" || typeof inner.pinShape === "string"
         ? inner.pinShape
         : undefined;
+    const display =
+      typeof inner.display === "boolean" ? inner.display : undefined;
     if (number === undefined) {
       addDiagnostic(state.diagnostics, {
         code: "IR_PIN_NUMBER_MISSING",
@@ -1846,6 +2162,7 @@ function compileSymbol(
       position: { x, y },
       length,
       rotation,
+      ...(display === undefined ? {} : { display }),
       ...(name === undefined ? {} : { name }),
       ...(number === undefined ? {} : { number }),
       ...(electricalType === undefined ? {} : { electricalType }),
@@ -2367,13 +2684,13 @@ function compileInstance(
       code: "IR_INSTANCE_PATH_INVALID",
       severity: "error",
       message:
-        "INSTANCE 文档 UUID 不符合官方 层级图ID_[$页号|Block符号ID...]_$终端页号 语法，记录未进入实例语义。",
+        "INSTANCE 文档 UUID 既不符合官方页号/Block 编码，也不符合当前导出的页面 ID/Block 编码，记录未进入实例语义。",
       documentType: document.docType
     });
     return;
   }
 
-  const overrides: IrInstanceAttributeOverride[] = [];
+  const overrides: RawInstanceContext["overrides"][number][] = [];
   const modeled = new Set<ReducedV3Record>();
   for (const selected of recordsOfType(records, "INSTANCE_ATTR")) {
     modeled.add(selected);
@@ -2404,9 +2721,16 @@ function compileInstance(
 
   state.instanceContexts.push({
     id: document.uuid,
+    pathEncoding: parsed.path.encoding,
     schematicId: parsed.path.schematicId,
     blockPath: parsed.path.blockPath,
-    terminalSheetNumber: parsed.path.terminalSheetNumber,
+    terminalPageReference: parsed.path.terminalPageReference,
+    ...(parsed.path.terminalSheetNumber === undefined
+      ? {}
+      : { terminalSheetNumber: parsed.path.terminalSheetNumber }),
+    ...(parsed.path.terminalPageId === undefined
+      ? {}
+      : { terminalPageId: parsed.path.terminalPageId }),
     overrides,
     provenance: document.headers.map((header) => ({
       client: header.client,
@@ -2440,7 +2764,7 @@ interface CompilerState {
   readonly schematicTables: IrSchematicTable[];
   readonly variants: IrVariant[];
   readonly componentGroups: IrComponentGroup[];
-  readonly instanceContexts: IrInstanceContext[];
+  readonly instanceContexts: RawInstanceContext[];
   readonly components: ComponentBeforeLibraryBindings[];
   readonly symbols: IrSymbol[];
   readonly symbolParts: IrSymbolPart[];
@@ -2448,6 +2772,8 @@ interface CompilerState {
   readonly symbolPins: IrSymbolPin[];
   readonly devices: IrDevice[];
   readonly wires: IrWire[];
+  readonly buses: IrBus[];
+  readonly busEntries: IrBusEntry[];
   readonly componentPinOverrides: ComponentPinOverrideCandidate[];
   readonly unboundAttributes: IrUnboundAttribute[];
   readonly unmodeledRecords: IrUnmodeledRecord[];
@@ -2505,6 +2831,8 @@ export function compileV3ToEdaIr(
     symbolPins: [],
     devices: [],
     wires: [],
+    buses: [],
+    busEntries: [],
     componentPinOverrides: [],
     unboundAttributes: [],
     unmodeledRecords: [],
@@ -2592,7 +2920,7 @@ export function compileV3ToEdaIr(
   );
   const variants = sortById(state.variants);
   const componentGroups = sortById(state.componentGroups);
-  const instanceContexts = sortById(state.instanceContexts);
+  const rawInstanceContexts = sortById(state.instanceContexts);
   const boardIds = new Set(boards.map((board) => board.id));
   const schematicIds = new Set(
     schematics.map((schematic) => schematic.id)
@@ -2605,11 +2933,11 @@ export function compileV3ToEdaIr(
     (document) => document.type === "INSTANCE"
   ).length;
   const instanceDocumentsWithInvalidPath =
-    instanceDocuments - instanceContexts.length;
-  const instanceContextsWithMissingSchematic = instanceContexts.filter(
+    instanceDocuments - rawInstanceContexts.length;
+  const instanceContextsWithMissingSchematic = rawInstanceContexts.filter(
     (context) => !schematicIds.has(context.schematicId)
   ).length;
-  const instanceAttributeOverrides = instanceContexts.reduce(
+  const instanceAttributeOverrides = rawInstanceContexts.reduce(
     (total, context) => total + context.overrides.length,
     0
   );
@@ -2817,9 +3145,9 @@ export function compileV3ToEdaIr(
     componentInputs,
     devices
   );
-  const components = componentBindingCompilation.components;
+  const boundComponents = componentBindingCompilation.components;
   const componentBindingSummary = componentBindingCompilation.summary;
-  const componentDeviceReferencesNotFound = components.filter(
+  const componentDeviceReferencesNotFound = boundComponents.filter(
     (component) =>
       component.symbolBinding.state === "UNRESOLVED_DEVICE_NOT_FOUND" ||
       component.footprintBinding.state === "UNRESOLVED_DEVICE_NOT_FOUND"
@@ -2898,10 +3226,23 @@ export function compileV3ToEdaIr(
     const symbolOrder = compareText(left.symbolId, right.symbolId);
     return symbolOrder !== 0 ? symbolOrder : compareText(left.id, right.id);
   });
+  const components = compileEffectiveComponentStates(
+    boundComponents,
+    devices,
+    schematicPages,
+    symbols,
+    symbolParts,
+    symbolPins
+  );
   const wires = state.wires.sort((left, right) => {
     const pageOrder = compareText(left.pageId, right.pageId);
     return pageOrder !== 0 ? pageOrder : compareText(left.id, right.id);
   });
+  const buses = state.buses.sort(
+    (left, right) =>
+      compareText(left.pageId, right.pageId) || compareText(left.id, right.id)
+  );
+  const busEntries = state.busEntries.sort(compareBusEntry);
   const pinInstanceCompilation = compilePinInstances(
     components,
     symbols,
@@ -2911,6 +3252,59 @@ export function compileV3ToEdaIr(
   );
   const pinInstances = pinInstanceCompilation.pinInstances;
   const pinSummary = pinInstanceCompilation.summary;
+  const semanticCompilation = compileSemantics(
+    components,
+    devices,
+    symbols,
+    pinInstances
+  );
+  const componentSemantics = semanticCompilation.componentSemantics;
+  const interfaces = semanticCompilation.interfaces;
+  const resourceCompilation = compileResources(
+    components,
+    componentSemantics,
+    pinInstances
+  );
+  const resourceNodes = resourceCompilation.resourceNodes;
+  const resourceEdges = resourceCompilation.resourceEdges;
+  const instanceResolution = resolveInstanceContexts(rawInstanceContexts, {
+    schematics,
+    pages: schematicPages,
+    components,
+    symbols,
+    pinInstances,
+    devices
+  });
+  const instanceContexts = instanceResolution.contexts;
+  const componentOccurrences = instanceResolution.occurrences;
+  const instanceResolutionSummary = instanceResolution.summary;
+  if (instanceResolutionSummary.unresolvedContexts > 0) {
+    addDiagnostic(
+      state.diagnostics,
+      {
+        code: "IR_INSTANCE_PATH_RESOLUTION_FAILED",
+        severity: "error",
+        message:
+          "INSTANCE 路径中的页面、Block 组件或 Block Symbol 引用未能完整闭环；上下文保留稳定失败状态。",
+        documentType: "INSTANCE"
+      },
+      instanceResolutionSummary.unresolvedContexts
+    );
+  }
+  if (instanceResolutionSummary.unresolvedOverrides > 0) {
+    addDiagnostic(
+      state.diagnostics,
+      {
+        code: "IR_INSTANCE_ATTRIBUTE_TARGET_UNRESOLVED",
+        severity: "warning",
+        message:
+          "INSTANCE_ATTR 目标未能唯一绑定到终端页组件或符号引脚；原始覆盖与稳定失败状态均已保留。",
+        documentType: "INSTANCE",
+        recordType: "INSTANCE_ATTR"
+      },
+      instanceResolutionSummary.unresolvedOverrides
+    );
+  }
   if (pinInstanceCompilation.unresolvedOverrides.length > 0) {
     addDiagnostic(
       state.diagnostics,
@@ -3318,8 +3712,94 @@ export function compileV3ToEdaIr(
     instanceContexts: instanceContexts.length,
     instanceDocumentsWithInvalidPath,
     instanceContextsWithMissingSchematic,
+    instanceContextsResolved: instanceResolutionSummary.resolvedContexts,
+    instanceContextsUnresolved: instanceResolutionSummary.unresolvedContexts,
     instanceAttributeOverrides,
+    instanceAttributeOverridesAppliedToComponents:
+      instanceResolutionSummary.appliedComponentOverrides,
+    instanceAttributeOverridesAppliedToPins:
+      instanceResolutionSummary.appliedPinOverrides,
+    instanceAttributeOverridesUnresolved:
+      instanceResolutionSummary.unresolvedOverrides,
+    componentOccurrences: componentOccurrences.length,
+    componentOccurrencesPopulated: componentOccurrences.filter(
+      (item) => item.assembly.status === "POPULATED"
+    ).length,
+    componentOccurrencesDnp: componentOccurrences.filter(
+      (item) => item.assembly.status === "DNP"
+    ).length,
+    componentOccurrencesAssemblyUnknown: componentOccurrences.filter(
+      (item) => item.assembly.status === "UNKNOWN"
+    ).length,
     components: components.length,
+    componentsPopulated: components.filter(
+      (item) => item.assembly.status === "POPULATED"
+    ).length,
+    componentsDnp: components.filter((item) => item.assembly.status === "DNP")
+      .length,
+    componentsAssemblyUnknown: components.filter(
+      (item) => item.assembly.status === "UNKNOWN"
+    ).length,
+    componentsPinCompletenessComplete: components.filter(
+      (item) => item.pinCompleteness.status === "COMPLETE"
+    ).length,
+    componentsPinCompletenessPartial: components.filter(
+      (item) => item.pinCompleteness.status === "PARTIAL"
+    ).length,
+    componentsPinCompletenessUnknown: components.filter(
+      (item) => item.pinCompleteness.status === "UNKNOWN"
+    ).length,
+    componentSemantics: componentSemantics.length,
+    componentSemanticsUnknownRole: componentSemantics.filter(
+      (item) => item.primaryRole === "UNKNOWN"
+    ).length,
+    componentPowerDomainCandidates: new Set(
+      componentSemantics.flatMap((item) =>
+        item.powerDomains.map((domain) => domain.id)
+      )
+    ).size,
+    interfaces: interfaces.length,
+    interfacesCandidate: interfaces.filter(
+      (item) => item.status === "CANDIDATE"
+    ).length,
+    interfacesPartialCandidate: interfaces.filter(
+      (item) => item.status === "PARTIAL_CANDIDATE"
+    ).length,
+    interfacesUnresolved: interfaces.filter(
+      (item) => item.status === "UNRESOLVED"
+    ).length,
+    interfacesActive: interfaces.filter(
+      (item) => item.activityStatus === "ACTIVE"
+    ).length,
+    interfacesExcludedDnp: interfaces.filter(
+      (item) => item.activityStatus === "EXCLUDED_DNP"
+    ).length,
+    interfacesAssemblyUnknown: interfaces.filter(
+      (item) => item.activityStatus === "ASSEMBLY_UNKNOWN"
+    ).length,
+    resourceNodes: resourceNodes.length,
+    resourceEdges: resourceEdges.length,
+    resourceEdgesPower: resourceEdges.filter(
+      (item) => item.resourceType === "POWER"
+    ).length,
+    resourceEdgesClock: resourceEdges.filter(
+      (item) => item.resourceType === "CLOCK"
+    ).length,
+    resourceEdgesResetBoot: resourceEdges.filter(
+      (item) => item.resourceType === "RESET_BOOT"
+    ).length,
+    resourceEdgesMcuPin: resourceEdges.filter(
+      (item) => item.resourceType === "MCU_PIN"
+    ).length,
+    resourceEdgesActive: resourceEdges.filter(
+      (item) => item.activityStatus === "ACTIVE"
+    ).length,
+    resourceEdgesExcludedDnp: resourceEdges.filter(
+      (item) => item.activityStatus === "EXCLUDED_DNP"
+    ).length,
+    resourceEdgesAssemblyUnknown: resourceEdges.filter(
+      (item) => item.activityStatus === "ASSEMBLY_UNKNOWN"
+    ).length,
     componentsWithDesignator: components.filter((item) => item.designator !== undefined)
       .length,
     componentsWithDevice: components.filter((item) => item.deviceId !== undefined).length,
@@ -3355,10 +3835,32 @@ export function compileV3ToEdaIr(
     ).length,
     symbolPins: symbolPins.length,
     symbolPinsWithNumber: symbolPins.filter((item) => item.number !== undefined).length,
+    symbolPinsHidden: symbolPins.filter((item) => item.display === false).length,
     devices: devices.length,
     wires: wires.length,
     wiresWithExplicitNet: wires.filter((item) => item.explicitNetName !== undefined).length,
     wireSegments: wires.reduce((total, wire) => total + wire.segments.length, 0),
+    buses: buses.length,
+    busesWithExplicitNet: buses.filter(
+      (item) => item.explicitNetName !== undefined
+    ).length,
+    busesWithEmptyEntrySet: buses.filter(
+      (item) => item.entryIds.length === 0
+    ).length,
+    busSegments: buses.reduce(
+      (total, bus) => total + bus.segments.length,
+      0
+    ),
+    busEntries: busEntries.length,
+    busEntriesEmbedded: busEntries.filter(
+      (item) => item.encoding === "OBSERVED_EMBEDDED_BUSENTRY_MAP_ITEM"
+    ).length,
+    busEntriesSeparate: busEntries.filter(
+      (item) => item.encoding === "OFFICIAL_SEPARATE_BUSENTRY_RECORD"
+    ).length,
+    busEntriesUnbound: busEntries.filter(
+      (item) => item.busId === undefined
+    ).length,
     pinInstances: pinSummary.pinInstances,
     pinInstancesWithUniqueExplicitNetCandidate:
       pinSummary.uniqueExplicitNetCandidates,
@@ -3401,10 +3903,10 @@ export function compileV3ToEdaIr(
   };
   const base = {
     schema: "schemcp.eda-ir" as const,
-    schemaVersion: "1.0.0" as const,
+    schemaVersion: "1.1.0" as const,
     generator: {
       name: "@yuanzihao/schemcp" as const,
-      version: "0.1.0" as const
+      version: "0.2.0" as const
     },
     source: {
       format: "EASYEDA_V3_LOG" as const,
@@ -3423,13 +3925,20 @@ export function compileV3ToEdaIr(
     variants,
     componentGroups,
     instanceContexts,
+    componentOccurrences,
     components,
+    componentSemantics,
+    interfaces,
+    resourceNodes,
+    resourceEdges,
     symbols,
     symbolParts,
     symbolTexts,
     symbolPins,
     devices,
     wires,
+    buses,
+    busEntries,
     pinInstances,
     shortRelations,
     networkEndpointCandidates,

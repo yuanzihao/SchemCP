@@ -302,7 +302,7 @@ export async function importDocumentReference(
       documentReferenceId,
       generator: {
         name: "@yuanzihao/schemcp" as const,
-        version: "0.1.0"
+        version: "0.2.0"
       },
       document,
       pdf: {
@@ -409,7 +409,7 @@ function parseManifest(value: unknown, bundleName: string): DocumentReferenceMan
     !DOC_ID.test(bundleName) ||
     !isObject(value.generator) ||
     value.generator.name !== "@yuanzihao/schemcp" ||
-    value.generator.version !== "0.1.0" ||
+    value.generator.version !== "0.2.0" ||
     !isObject(value.document) ||
     !isObject(value.pdf) ||
     !isObject(value.index) ||

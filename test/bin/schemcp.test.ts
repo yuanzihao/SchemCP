@@ -50,7 +50,7 @@ test("单一 schemcp 入口保留显式 mcp 与辅助 CLI 路由", async () => {
     encoding: "utf8"
   });
   assert.equal(version.stderr, "");
-  assert.equal(version.stdout, "0.1.0\n");
+  assert.equal(version.stdout, "0.2.0\n");
 
   const transport = new StdioClientTransport({
     command: process.execPath,

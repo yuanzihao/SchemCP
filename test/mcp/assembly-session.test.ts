@@ -481,7 +481,7 @@ test("装配连接只沿同网和用户确认映射，并可精确恢复私有�
   const unknownProjectManifest = createSchematicAssemblyManifest({
     schema: "schemcp.schematic-assembly-manifest",
     schemaVersion: "1.0.0",
-    generator: { name: "@yuanzihao/schemcp", version: "0.1.0" },
+    generator: { name: "@yuanzihao/schemcp", version: "0.2.0" },
     projects: [
       { projectId: projectIdForIr(knownHash), irSha256: knownHash },
       { projectId: projectIdForIr(unknownHash), irSha256: unknownHash }

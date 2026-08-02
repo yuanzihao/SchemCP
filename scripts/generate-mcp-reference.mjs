@@ -66,7 +66,7 @@ async function listRuntimeContract() {
 }
 
 function assertPublicContract(tools, expectedNames) {
-  assert.equal(tools.length, 48, "公共 MCP 必须固定为 48 个工具");
+  assert.equal(tools.length, 54, "公共 MCP 必须固定为 54 个工具");
   assert.deepEqual(
     tools.map((tool) => tool.name),
     expectedNames,
@@ -91,7 +91,7 @@ function assertPublicContract(tools, expectedNames) {
 function createSnapshot(tools, version) {
   return {
     schema: "schemcp.mcp-tools-contract",
-    schemaVersion: "1.0.0",
+    schemaVersion: "1.1.0",
     server: {
       id: "schemcp",
       package: "@yuanzihao/schemcp",

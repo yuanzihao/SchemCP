@@ -25,6 +25,10 @@ export const PROJECT_DIFF_ENTITY_KINDS = [
   "COMPONENT_GROUP",
   "INSTANCE_CONTEXT",
   "COMPONENT",
+  "COMPONENT_SEMANTIC",
+  "INTERFACE",
+  "RESOURCE_NODE",
+  "RESOURCE_EDGE",
   "SYMBOL",
   "SYMBOL_PART",
   "SYMBOL_TEXT",
@@ -330,6 +334,36 @@ function entitySources(ir: EdaIr): readonly EntitySource[] {
       entityId: item.id,
       parentId: item.pageId,
       label: boundedLabel(item.designator),
+      value: item
+    })),
+    ...ir.componentSemantics.map((item) => ({
+      entityKind: "COMPONENT_SEMANTIC" as const,
+      entityId: item.id,
+      parentId: `${item.pageId}\n${item.componentId}`,
+      label: boundedLabel(item.primaryRole),
+      value: item
+    })),
+    ...ir.interfaces.map((item) => ({
+      entityKind: "INTERFACE" as const,
+      entityId: item.id,
+      parentId: item.logicalComponentId,
+      label: boundedLabel(`${item.type}:${item.group}`),
+      value: item
+    })),
+    ...ir.resourceNodes.map((item) => ({
+      entityKind: "RESOURCE_NODE" as const,
+      entityId: item.id,
+      parentId: item.pageId,
+      label: boundedLabel(
+        item.kind === "NET" ? item.netName : item.logicalComponentId
+      ),
+      value: item
+    })),
+    ...ir.resourceEdges.map((item) => ({
+      entityKind: "RESOURCE_EDGE" as const,
+      entityId: item.id,
+      parentId: item.resourceType,
+      label: boundedLabel(item.kind),
       value: item
     })),
     ...ir.symbols.map((item) => ({

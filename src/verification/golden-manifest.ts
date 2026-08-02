@@ -7,7 +7,7 @@ import type {
 } from "../ir/model.js";
 import { canonicalJson, sha256CanonicalJson } from "../core/canonical-json.js";
 
-export const GOLDEN_MANIFEST_SCHEMA_VERSION = "1.0.0" as const;
+export const GOLDEN_MANIFEST_SCHEMA_VERSION = "1.1.0" as const;
 export const DEFAULT_GOLDEN_MANIFEST_MAX_BYTES = 1024 * 1024;
 export const DEFAULT_GOLDEN_MANIFEST_MAX_JSON_DEPTH = 32;
 
@@ -76,8 +76,42 @@ const SUMMARY_KEYS = [
   "instanceContexts",
   "instanceDocumentsWithInvalidPath",
   "instanceContextsWithMissingSchematic",
+  "instanceContextsResolved",
+  "instanceContextsUnresolved",
   "instanceAttributeOverrides",
+  "instanceAttributeOverridesAppliedToComponents",
+  "instanceAttributeOverridesAppliedToPins",
+  "instanceAttributeOverridesUnresolved",
+  "componentOccurrences",
+  "componentOccurrencesPopulated",
+  "componentOccurrencesDnp",
+  "componentOccurrencesAssemblyUnknown",
   "components",
+  "componentsPopulated",
+  "componentsDnp",
+  "componentsAssemblyUnknown",
+  "componentsPinCompletenessComplete",
+  "componentsPinCompletenessPartial",
+  "componentsPinCompletenessUnknown",
+  "componentSemantics",
+  "componentSemanticsUnknownRole",
+  "componentPowerDomainCandidates",
+  "interfaces",
+  "interfacesCandidate",
+  "interfacesPartialCandidate",
+  "interfacesUnresolved",
+  "interfacesActive",
+  "interfacesExcludedDnp",
+  "interfacesAssemblyUnknown",
+  "resourceNodes",
+  "resourceEdges",
+  "resourceEdgesPower",
+  "resourceEdgesClock",
+  "resourceEdgesResetBoot",
+  "resourceEdgesMcuPin",
+  "resourceEdgesActive",
+  "resourceEdgesExcludedDnp",
+  "resourceEdgesAssemblyUnknown",
   "componentsWithDesignator",
   "componentsWithDevice",
   "componentsWithSymbol",
@@ -96,10 +130,19 @@ const SUMMARY_KEYS = [
   "symbolTextsWithPartNotFound",
   "symbolPins",
   "symbolPinsWithNumber",
+  "symbolPinsHidden",
   "devices",
   "wires",
   "wiresWithExplicitNet",
   "wireSegments",
+  "buses",
+  "busesWithExplicitNet",
+  "busesWithEmptyEntrySet",
+  "busSegments",
+  "busEntries",
+  "busEntriesEmbedded",
+  "busEntriesSeparate",
+  "busEntriesUnbound",
   "pinInstances",
   "pinInstancesWithUniqueExplicitNetCandidate",
   "pinInstancesWithConflictingExplicitNetCandidates",
@@ -352,6 +395,15 @@ function parseSummary(value: unknown): EdaIrSummary {
     parsed.componentsWithFootprint
   ) {
     failInvalid("expected.summary 组件 Footprint 有效绑定来源总数不守恒");
+  }
+  if (
+    parsed.busesWithExplicitNet > parsed.buses ||
+    parsed.busesWithEmptyEntrySet > parsed.buses ||
+    parsed.busEntriesEmbedded + parsed.busEntriesSeparate !==
+      parsed.busEntries ||
+    parsed.busEntriesUnbound > parsed.busEntriesSeparate
+  ) {
+    failInvalid("expected.summary BUS 与 BUSENTRY 分类计数不守恒");
   }
   const endpointTotal = ENDPOINT_KINDS.reduce(
     (total, kind) => total + parsed.pinInstancesByEndpointKind[kind],
