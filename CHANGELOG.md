@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-08-02
+
 ### Added
 
 - 兼容官方页号/Block 与当前页面 ID/Block 两种 INSTANCE 路径编码，并确定性校验页面、Block Component、Block Symbol、循环和歧义；
@@ -31,8 +33,8 @@
 
 ### Release status
 
-- `0.2.0` 当前为未发布 RC；发布标签、GitHub Release 与 npm 发布需要明确授权；
-- Windows x64 真实主机上的候选包安装与真实工程 MCP 调用仍是正式发布阻断项。
+- `0.2.0` 已作为稳定版本发布；
+- Linux、macOS、Windows CI 与 macOS 私有真实工程验收通过；Windows x64 未完成私有真实嘉立创工程主机调用，本版本不声明该项证据。
 
 ## [0.1.0] - 2026-07-31
 
