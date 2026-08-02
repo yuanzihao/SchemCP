@@ -1,6 +1,6 @@
 # MCP 服务参考
 
-SchemCP `0.1.0` 提供只读 stdio MCP 服务。服务可无工程启动，只有 `open_schematic_project` 可以读取客户端明确提供的 `.epro2` 绝对附件路径。它不会扫描目录、驱动浏览器或修改工程。
+SchemCP `0.2.0` 提供只读 stdio MCP 服务。服务可无工程启动，只有 `open_schematic_project` 可以读取客户端明确提供的 `.epro2` 绝对附件路径。它不会扫描目录、驱动浏览器或修改工程。
 
 服务只维护嘉立创 EDA 专业版 `.epro2` 原理图解析，其他 EDA 原理图格式暂无支持计划。第三方 EDA 工程应先导入嘉立创 EDA 专业版并由用户核对，再导出 `.epro2`；服务不读取原始第三方格式，也不验证转换完整性。
 
@@ -10,7 +10,7 @@ SchemCP `0.1.0` 提供只读 stdio MCP 服务。服务可无工程启动，只�
 npx -y @yuanzihao/schemcp
 ```
 
-无参数和显式 `mcp` 子命令等价。stdout 仅承载 MCP 协议消息，日志与诊断写入 stderr。公共契约固定为 50 个原理图工具、0 个 PCB 工具，不存在 `--profile` 或内部全量档。
+无参数和显式 `mcp` 子命令等价。stdout 仅承载 MCP 协议消息，日志与诊断写入 stderr。公共契约固定为 54 个原理图工具、0 个 PCB 工具，不存在 `--profile` 或内部全量档。
 
 ## 工具分组
 
@@ -22,6 +22,7 @@ npx -y @yuanzihao/schemcp
 | 原理图内容 | `list_schematic_annotations`、`list_schematic_graphic_primitives`、`list_schematic_tables`、`get_schematic_table`、`list_symbol_texts` |
 | 网络与候选 | `list_explicit_nets`、`list_buses`、`list_candidate_netlist_tuples`、`list_candidate_netlist_exclusions`、`list_network_endpoint_candidates`、`list_short_relation_candidates` |
 | 组件语义与接口 | 组件查询中的 `semantic`、`list_interfaces` |
+| P2 资源 | `get_power_tree`、`get_clock_tree`、`get_reset_boot_paths`、`get_mcu_pin_usage` |
 | `.enet` | `attach_schematic_netlist`、`detach_schematic_netlist`、`get_netlist_comparison_summary`、`list_netlist_comparison_tuples`、`list_bound_electrical_nets`、`get_net` |
 | 器件资料 | `list_part_masters`、`get_part_master`、`list_datasheet_references`、`get_datasheet_section` |
 | Variant 与差异 | `get_variant`、`list_variant_overrides`、`diff_project_versions` |
@@ -34,6 +35,10 @@ npx -y @yuanzihao/schemcp
 `list_components` 可按 `assemblyStatus` 和 `pinCompletenessStatus` 筛选。装配状态只把有效 `Add into BOM=yes/no` 映射为 `POPULATED/DNP`，并保留 Device 默认值、组件属性或层级实例覆盖的来源；缺失、冲突、非法值以及尚未应用的 Variant 一律返回 `UNKNOWN`。`get_component_pins` 只在 Symbol `PART` 集合可证明完整时合并同位号多单元器件，显式 `display=false` 引脚不会被丢弃。
 
 组件查询中的 `semantic` 使用 `schemcp.semantic-rules/1` 返回角色和页内电源域候选。`list_interfaces` 只从存在导线接触的引脚名称与显式网络候选识别接口：无导线或显式 NC 不产生接口，只有未命名导线或连接冲突时返回 `UNRESOLVED`。DNP 默认不出现在活动接口结果中，使用 `activityStatus=EXCLUDED_DNP` 可审计排除证据。所有结果都是确定性工程推断，不是数据手册事实或已验证电气真值。
+
+`get_power_tree` 只沿明确电源角色和带证据的转换、电源开关或保护/滤波传输候选边遍历，不穿过普通器件猜测连通。`get_clock_tree` 只覆盖原理图外部晶振/振荡器、时钟缓冲候选和 MCU 外部输入，不推断 MCU 内部 PLL、时钟树或固件配置。`get_reset_boot_paths` 只描述显式复位监督、连接器外部控制、手动复位、启动和绑带网络。三种图查询 `maxDepth<=8`、每页最多 50 项，并明确返回多个根、环路和深度截断状态。
+
+`get_mcu_pin_usage` 聚合完整多单元及隐藏引脚，并为每个引脚返回目标级 `USED/EXPLICIT_NC/UNUSED/UNKNOWN/DNP_COMPONENT`、细分 `usageStatus`、电源域、接口、外部时钟/复位/启动资源角色及稳定未解析原因。只有基础 Variant、`POPULATED`、引脚完整性 `COMPLETE`，且工程显式 NC 或绑定 `.enet` 明确空网络时才确认未使用；有明确连接候选时返回 `USED`，证据不足保持 `UNKNOWN`。
 
 ## 工程与附件
 

@@ -752,17 +752,20 @@ export interface IrPinInstance {
   };
 }
 
-export type IrSemanticTruthStatus = "CANDIDATE" | "UNRESOLVED";
+export type IrSemanticTruthStatus = "NOT_VERIFIED" | "CANDIDATE" | "UNRESOLVED";
 
 export type IrComponentRole =
   | "MCU_MPU"
   | "POWER_INPUT"
   | "LDO"
   | "DC_DC"
+  | "POWER_SWITCH_CANDIDATE"
   | "REFERENCE_SOURCE"
   | "CRYSTAL_OSCILLATOR"
+  | "CLOCK_BUFFER_CANDIDATE"
   | "MEMORY"
   | "TRANSCEIVER"
+  | "ISOLATOR_CANDIDATE"
   | "CONNECTOR"
   | "PROTECTION_CANDIDATE"
   | "FILTER_CANDIDATE"
@@ -787,7 +790,7 @@ export interface IrComponentPowerDomainCandidate {
   readonly netName: string;
   readonly relationship: "INPUT" | "OUTPUT" | "GROUND" | "RELATED";
   readonly pinInstanceIds: readonly string[];
-  readonly isolationStatus: "UNRESOLVED";
+  readonly isolationStatus: "NOT_INDICATED" | "ISOLATION_CANDIDATE";
   readonly ruleId: "power-domain.explicit-pin-net.v1";
   readonly evidenceClass: "DETERMINISTIC_RULE";
   readonly truthStatus: "CANDIDATE";
@@ -864,6 +867,70 @@ export interface IrInterface {
     | "CONNECTION_CANDIDATE_UNRESOLVED"
     | "ASSEMBLY_UNKNOWN"
   )[];
+  readonly ruleId: string;
+  readonly evidenceClass: "DETERMINISTIC_RULE";
+  readonly truthStatus: IrSemanticTruthStatus;
+  readonly semanticRuleSetVersion: "schemcp.semantic-rules/1";
+  readonly provenance: readonly IrRecordProvenance[];
+}
+
+export type IrResourceType = "POWER" | "CLOCK" | "RESET_BOOT" | "MCU_PIN";
+
+export type IrResourceEdgeKind =
+  | "POWER_SOURCE_ENTRY"
+  | "POWER_CONVERSION"
+  | "POWER_SWITCH_TRANSFER_CANDIDATE"
+  | "POWER_TRANSFER_CANDIDATE"
+  | "POWER_LOAD"
+  | "CLOCK_SOURCE_OUTPUT"
+  | "CLOCK_BUFFER_INPUT"
+  | "CLOCK_BUFFER_OUTPUT"
+  | "CLOCK_SINK_INPUT"
+  | "RESET_SOURCE_OUTPUT"
+  | "RESET_EXTERNAL_SOURCE_CANDIDATE"
+  | "RESET_MANUAL_SOURCE_CANDIDATE"
+  | "RESET_SINK_INPUT"
+  | "RESET_BIAS_CANDIDATE"
+  | "BOOT_STRAP_INPUT"
+  | "BOOT_BIAS_CANDIDATE"
+  | "MCU_PIN_CONNECTION";
+
+export type IrResourceNode =
+  | {
+      readonly kind: "NET";
+      readonly id: string;
+      readonly pageId: string;
+      readonly netName: string;
+    }
+  | {
+      readonly kind: "COMPONENT";
+      readonly id: string;
+      readonly pageId: string;
+      readonly componentId: string;
+      readonly logicalComponentId: string;
+    };
+
+export type IrResourceUnresolvedReason =
+  | "ASSEMBLY_STATUS_UNKNOWN"
+  | "PIN_COMPLETENESS_NOT_COMPLETE";
+
+export interface IrResourceEdge {
+  readonly id: string;
+  readonly resourceType: IrResourceType;
+  readonly kind: IrResourceEdgeKind;
+  readonly direction: "DIRECTED" | "BIDIRECTIONAL";
+  readonly from: IrResourceNode;
+  readonly to: IrResourceNode;
+  readonly viaComponentRefs: readonly {
+    readonly componentId: string;
+    readonly pageId: string;
+    readonly logicalComponentId: string;
+  }[];
+  readonly pinInstanceIds: readonly string[];
+  readonly activityStatus: IrInterfaceActivityStatus;
+  readonly isolationStatus: "NOT_INDICATED" | "ISOLATION_CANDIDATE";
+  readonly status: "CANDIDATE" | "UNRESOLVED";
+  readonly unresolvedReasons: readonly IrResourceUnresolvedReason[];
   readonly ruleId: string;
   readonly evidenceClass: "DETERMINISTIC_RULE";
   readonly truthStatus: IrSemanticTruthStatus;
@@ -1044,6 +1111,15 @@ export interface EdaIrSummary {
   readonly interfacesActive: number;
   readonly interfacesExcludedDnp: number;
   readonly interfacesAssemblyUnknown: number;
+  readonly resourceNodes: number;
+  readonly resourceEdges: number;
+  readonly resourceEdgesPower: number;
+  readonly resourceEdgesClock: number;
+  readonly resourceEdgesResetBoot: number;
+  readonly resourceEdgesMcuPin: number;
+  readonly resourceEdgesActive: number;
+  readonly resourceEdgesExcludedDnp: number;
+  readonly resourceEdgesAssemblyUnknown: number;
   readonly componentsWithDesignator: number;
   readonly componentsWithDevice: number;
   readonly componentsWithSymbol: number;
@@ -1110,7 +1186,7 @@ export interface EdaIr {
   readonly schemaVersion: "1.1.0";
   readonly generator: {
     readonly name: "@yuanzihao/schemcp";
-    readonly version: "0.1.0";
+    readonly version: "0.2.0";
   };
   readonly source: {
     readonly format: "EASYEDA_V3_LOG";
@@ -1133,6 +1209,8 @@ export interface EdaIr {
   readonly components: readonly IrComponent[];
   readonly componentSemantics: readonly IrComponentSemantic[];
   readonly interfaces: readonly IrInterface[];
+  readonly resourceNodes: readonly IrResourceNode[];
+  readonly resourceEdges: readonly IrResourceEdge[];
   readonly symbols: readonly IrSymbol[];
   readonly symbolParts: readonly IrSymbolPart[];
   readonly symbolTexts: readonly IrSymbolText[];

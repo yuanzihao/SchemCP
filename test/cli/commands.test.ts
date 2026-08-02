@@ -119,7 +119,7 @@ test("辅助 CLI 的全部公开读写/校验入口形成可复算纵切", async
   const manifest = createSchematicAssemblyManifest({
     schema: "schemcp.schematic-assembly-manifest",
     schemaVersion: "1.0.0",
-    generator: { name: "@yuanzihao/schemcp", version: "0.1.0" },
+    generator: { name: "@yuanzihao/schemcp", version: "0.2.0" },
     projects: ["a", "b"].map((value) => {
       const irSha256 = value.repeat(64);
       return { projectId: projectIdForIr(irSha256), irSha256 };

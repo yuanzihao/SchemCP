@@ -26,13 +26,13 @@ import {
 } from "./jlceda-pro-enet.js";
 
 const MAX_REPORT_BYTES = 64 * 1024 * 1024;
-const GENERATOR_VERSION = "0.1.0";
+const GENERATOR_VERSION = "0.2.0";
 
 export interface NetlistComparisonReport {
   readonly schemaVersion: "0.1.0";
   readonly generator: {
     readonly name: "@yuanzihao/schemcp";
-    readonly version: "0.1.0";
+    readonly version: "0.2.0";
   };
   readonly sourceProject: {
     readonly archiveSha256: string;
@@ -133,7 +133,7 @@ export function buildNetlistComparisonReport(
     schemaVersion: "0.1.0" as const,
     generator: {
       name: "@yuanzihao/schemcp" as const,
-      version: GENERATOR_VERSION as "0.1.0"
+      version: GENERATOR_VERSION as "0.2.0"
     },
     sourceProject: {
       archiveSha256: ir.source.archiveSha256,

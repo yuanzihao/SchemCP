@@ -1,5 +1,5 @@
 export const MCP_SERVER_NAME = "schemcp";
-export const MCP_SERVER_VERSION = "0.1.0";
+export const MCP_SERVER_VERSION = "0.2.0";
 
 export const MCP_TOOL_NAMES = [
   "open_schematic_project",
@@ -45,6 +45,10 @@ export const MCP_TOOL_NAMES = [
   "list_explicit_nets",
   "list_buses",
   "list_interfaces",
+  "get_power_tree",
+  "get_clock_tree",
+  "get_reset_boot_paths",
+  "get_mcu_pin_usage",
   "list_candidate_netlist_tuples",
   "list_candidate_netlist_exclusions",
   "list_network_endpoint_candidates",

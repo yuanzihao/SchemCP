@@ -2,9 +2,9 @@
 
 AI Context Pack 是 SchemCP 将一个 `.epro2` 原理图工程导出为私有、确定性 JSON/JSONL 目录的辅助格式。它适合离线审计、局部检索和重复验证，不是公开分享格式。
 
-当前契约版本：`1.0.0`
+当前契约版本：`1.1.0`
 
-生成器：`@yuanzihao/schemcp` `0.1.0`
+生成器：`@yuanzihao/schemcp` `0.2.0`
 
 ## 生成与校验
 
@@ -17,13 +17,23 @@ schemcp verify-context-pack board.ai-context
 
 ## 固定文件
 
-除 `manifest.json` 外，1.0.0 固定包含 20 个 payload：
+除 `manifest.json` 外，1.1.0 固定包含 32 个 payload：
 
 - `project-summary.json`
 - `hierarchy.json`
 - `documents.jsonl`
 - `variants.json`
 - `components.jsonl`
+- `component-semantics.jsonl`
+- `interfaces.jsonl`
+- `power-domains.jsonl`
+- `resource-nodes.jsonl`
+- `resource-edges.jsonl`
+- `power-tree.jsonl`
+- `clock-tree.jsonl`
+- `reset-boot-paths.jsonl`
+- `mcu-pin-resources.jsonl`
+- `resource-unresolved.jsonl`
 - `schematic-annotations.jsonl`
 - `schematic-graphic-primitives.jsonl`
 - `schematic-tables.jsonl`
@@ -34,6 +44,8 @@ schemcp verify-context-pack board.ai-context
 - `symbol-texts.jsonl`
 - `symbol-pins.jsonl`
 - `wires.jsonl`
+- `buses.jsonl`
+- `bus-entries.jsonl`
 - `explicit-nets.jsonl`
 - `instance-contexts.jsonl`
 - `diagnostics.json`
@@ -56,6 +68,6 @@ schemcp verify-context-pack board.ai-context
 
 ## 真值与隐私
 
-Context Pack 只封装 SchemCP 已建模的原理图事实和明确标注的候选，不会把几何连接升级为官方电气真值。`electricalTruth` 始终保持 `NOT_VERIFIED`。
+Context Pack 只封装 SchemCP 已建模的原理图事实和明确标注的候选，不会把几何连接、组件语义、接口或资源边升级为官方电气真值。`electricalTruth` 始终保持 `NOT_VERIFIED`。显式 BUS 名称不会被自动展开；分类型资源文件是确定性离线视图，不会替代有界 MCP 图查询。`mcu-pin-resources.jsonl` 未绑定 `.enet`，因此只能确认工程显式 NC，其他未连接表象保持 `UNKNOWN`。
 
 Context Pack 可能包含位号、器件属性、网络标签、诊断和来源位置，因此不得提交 Git、上传 Issue 或作为普通构建产物发布。

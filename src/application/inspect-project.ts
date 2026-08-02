@@ -10,7 +10,7 @@ export interface ProjectInspection {
   readonly schemaVersion: "1.1";
   readonly tool: {
     readonly name: "@yuanzihao/schemcp";
-    readonly version: "0.1.0";
+    readonly version: "0.2.0";
   };
   readonly gate: "P1_LOG_REDUCED";
   readonly electricalTruth: "NOT_VERIFIED";
@@ -44,7 +44,7 @@ export async function inspectProject(
     schemaVersion: "1.1" as const,
     tool: {
       name: "@yuanzihao/schemcp" as const,
-      version: "0.1.0" as const
+      version: "0.2.0" as const
     },
     gate: "P1_LOG_REDUCED" as const,
     electricalTruth: "NOT_VERIFIED" as const,

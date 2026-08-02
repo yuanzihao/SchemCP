@@ -921,6 +921,60 @@ test("MCP 无工程启动后可直接打开对话附件并安全关闭", async (
     assert.equal(interfaceItems[0]?.activityStatus, "ACTIVE");
     assert.deepEqual(interfaceItems[0]?.missingSignals, ["DM"]);
 
+    const powerTree = structured(
+      await client.callTool({
+        name: "get_power_tree",
+        arguments: { maxDepth: 8, limit: 50 }
+      })
+    );
+    assert.equal(powerTree.resourceType, "POWER");
+    assert.equal(powerTree.semanticRuleSetVersion, "schemcp.semantic-rules/1");
+    assert.equal(
+      (powerTree.edges as { readonly total: number }).total > 0,
+      true
+    );
+    assert.equal(powerTree.electricalTruth, "NOT_VERIFIED");
+
+    const clockTree = structured(
+      await client.callTool({
+        name: "get_clock_tree",
+        arguments: { maxDepth: 8, limit: 50 }
+      })
+    );
+    assert.equal(clockTree.resourceType, "CLOCK");
+    assert.equal((clockTree.edges as { readonly total: number }).total, 0);
+
+    const resetBootPaths = structured(
+      await client.callTool({
+        name: "get_reset_boot_paths",
+        arguments: { maxDepth: 8, limit: 50 }
+      })
+    );
+    assert.equal(resetBootPaths.resourceType, "RESET_BOOT");
+    assert.equal(
+      (resetBootPaths.edges as { readonly total: number }).total,
+      0
+    );
+
+    const mcuPinUsage = structured(
+      await client.callTool({
+        name: "get_mcu_pin_usage",
+        arguments: { designator: "U1", limit: 50 }
+      })
+    );
+    assert.equal(mcuPinUsage.mcuCount, 1);
+    assert.equal(mcuPinUsage.netlistBinding, "NOT_BOUND");
+    const mcuPins = mcuPinUsage.pins as {
+      readonly total: number;
+      readonly items: readonly {
+        readonly usageStatus: string;
+        readonly truthStatus: string;
+      }[];
+    };
+    assert.equal(mcuPins.total, 1);
+    assert.equal(mcuPins.items[0]?.usageStatus, "USED_CANDIDATE");
+    assert.equal(mcuPins.items[0]?.truthStatus, "CANDIDATE");
+
     const contexts = structured(
       await client.callTool({
         name: "list_instance_contexts",

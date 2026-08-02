@@ -11,6 +11,7 @@ import {
 } from "../hierarchy/resolve-instance-contexts.js";
 import { compileEffectiveComponentStates } from "../variant/effective-component-state.js";
 import { compileSemantics } from "../semantics/compile-semantics.js";
+import { compileResources } from "../resources/compile-resources.js";
 import {
   compileComponentLibraryBindings,
   type ComponentBeforeLibraryBindings
@@ -3259,6 +3260,13 @@ export function compileV3ToEdaIr(
   );
   const componentSemantics = semanticCompilation.componentSemantics;
   const interfaces = semanticCompilation.interfaces;
+  const resourceCompilation = compileResources(
+    components,
+    componentSemantics,
+    pinInstances
+  );
+  const resourceNodes = resourceCompilation.resourceNodes;
+  const resourceEdges = resourceCompilation.resourceEdges;
   const instanceResolution = resolveInstanceContexts(rawInstanceContexts, {
     schematics,
     pages: schematicPages,
@@ -3769,6 +3777,29 @@ export function compileV3ToEdaIr(
     interfacesAssemblyUnknown: interfaces.filter(
       (item) => item.activityStatus === "ASSEMBLY_UNKNOWN"
     ).length,
+    resourceNodes: resourceNodes.length,
+    resourceEdges: resourceEdges.length,
+    resourceEdgesPower: resourceEdges.filter(
+      (item) => item.resourceType === "POWER"
+    ).length,
+    resourceEdgesClock: resourceEdges.filter(
+      (item) => item.resourceType === "CLOCK"
+    ).length,
+    resourceEdgesResetBoot: resourceEdges.filter(
+      (item) => item.resourceType === "RESET_BOOT"
+    ).length,
+    resourceEdgesMcuPin: resourceEdges.filter(
+      (item) => item.resourceType === "MCU_PIN"
+    ).length,
+    resourceEdgesActive: resourceEdges.filter(
+      (item) => item.activityStatus === "ACTIVE"
+    ).length,
+    resourceEdgesExcludedDnp: resourceEdges.filter(
+      (item) => item.activityStatus === "EXCLUDED_DNP"
+    ).length,
+    resourceEdgesAssemblyUnknown: resourceEdges.filter(
+      (item) => item.activityStatus === "ASSEMBLY_UNKNOWN"
+    ).length,
     componentsWithDesignator: components.filter((item) => item.designator !== undefined)
       .length,
     componentsWithDevice: components.filter((item) => item.deviceId !== undefined).length,
@@ -3875,7 +3906,7 @@ export function compileV3ToEdaIr(
     schemaVersion: "1.1.0" as const,
     generator: {
       name: "@yuanzihao/schemcp" as const,
-      version: "0.1.0" as const
+      version: "0.2.0" as const
     },
     source: {
       format: "EASYEDA_V3_LOG" as const,
@@ -3898,6 +3929,8 @@ export function compileV3ToEdaIr(
     components,
     componentSemantics,
     interfaces,
+    resourceNodes,
+    resourceEdges,
     symbols,
     symbolParts,
     symbolTexts,

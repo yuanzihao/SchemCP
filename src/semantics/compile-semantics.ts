@@ -176,10 +176,13 @@ const ROLE_PRIORITY = [
   "POWER_INPUT",
   "LDO",
   "DC_DC",
+  "POWER_SWITCH_CANDIDATE",
   "REFERENCE_SOURCE",
   "CRYSTAL_OSCILLATOR",
+  "CLOCK_BUFFER_CANDIDATE",
   "MEMORY",
   "TRANSCEIVER",
+  "ISOLATOR_CANDIDATE",
   "CONNECTOR",
   "RESET_SUPERVISOR",
   "BOOT_STRAP",
@@ -260,6 +263,14 @@ function roleCandidates(
       matched: dcDcIdentity || dcDcStructure
     },
     {
+      role: "POWER_SWITCH_CANDIDATE",
+      ruleId: "component-role.power-switch.identity.v1",
+      matched:
+        /LOAD[ _-]?SWITCH|POWER[ _-]?(?:DISTRIBUTION[ _-]?)?SWITCH|HIGH[ _-]?SIDE[ _-]?SWITCH|(?:^|[^A-Z0-9])EFUSE(?:[^A-Z0-9]|$)|HOT[ _-]?SWAP/u.test(
+          corpus
+        )
+    },
+    {
       role: "REFERENCE_SOURCE",
       ruleId: "component-role.reference.identity.v1",
       matched: /VOLTAGE[ _-]?REFERENCE|PRECISION[ _-]?REFERENCE/u.test(corpus)
@@ -270,6 +281,14 @@ function roleCandidates(
       matched:
         /CRYSTAL|OSCILLATOR|RESONATOR/u.test(corpus) ||
         (/^(?:Y|X)$/u.test(prefix) && group.pins.length > 0 && group.pins.length <= 4)
+    },
+    {
+      role: "CLOCK_BUFFER_CANDIDATE",
+      ruleId: "component-role.clock-buffer.identity.v1",
+      matched:
+        /CLOCK[ _-]?(?:BUFFER|DISTRIBUTOR|DISTRIBUTION|FANOUT)|FANOUT[ _-]?BUFFER/u.test(
+          corpus
+        )
     },
     {
       role: "MEMORY",
@@ -284,6 +303,14 @@ function roleCandidates(
       matched: /TRANSCEIVER|RS[ -]?(?:232|485|422)|CAN[ _-]?PHY|USB[ _-]?PHY|ETHERNET[ _-]?PHY/u.test(
         corpus
       )
+    },
+    {
+      role: "ISOLATOR_CANDIDATE",
+      ruleId: "component-role.isolator.identity.v1",
+      matched:
+        /DIGITAL[ _-]?ISOLATOR|GALVANIC[ _-]?ISOLAT(?:OR|ION)|ISOLATED[ _-]?(?:TRANSCEIVER|INTERFACE|DC[ _-]?DC)/u.test(
+          corpus
+        )
     },
     {
       role: "CONNECTOR",
@@ -382,7 +409,12 @@ function powerRelationship(
   }
   if (
     /(?:^|[_/])(?:VOUT|OUT|SW)(?:$|[_/])/u.test(normalized) &&
-    roles.some((role) => role.role === "LDO" || role.role === "DC_DC")
+    roles.some(
+      (role) =>
+        role.role === "LDO" ||
+        role.role === "DC_DC" ||
+        role.role === "POWER_SWITCH_CANDIDATE"
+    )
   ) {
     return "OUTPUT";
   }
@@ -441,7 +473,11 @@ function powerDomains(
         netName: domain.netName,
         relationship: domain.relationship,
         pinInstanceIds: domain.pins.map((pin) => pin.id).sort(compareText),
-        isolationStatus: "UNRESOLVED",
+        isolationStatus: roles.some(
+          (role) => role.role === "ISOLATOR_CANDIDATE"
+        )
+          ? "ISOLATION_CANDIDATE"
+          : "NOT_INDICATED",
         ruleId: "power-domain.explicit-pin-net.v1",
         evidenceClass: "DETERMINISTIC_RULE",
         truthStatus: "CANDIDATE",

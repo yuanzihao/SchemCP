@@ -1,11 +1,16 @@
 import path from "node:path";
-import type { IrComponentRole, IrInterfaceType } from "../ir/model.js";
+import type {
+  IrComponentRole,
+  IrInterfaceType,
+  IrResourceEdgeKind,
+  IrResourceType
+} from "../ir/model.js";
 
 const SHA256_PATTERN = /^[a-f0-9]{64}$/;
 const SAMPLE_ID_PATTERN = /^real-[0-9]{2}$/;
 const BASELINE_ID_PATTERN = /^v[0-9]+\.[0-9]+-m[0-9]+(?:-[a-z0-9-]+)?$/;
 
-export const REAL_PROJECT_MANIFEST_SCHEMA_VERSION = "1.3.0" as const;
+export const REAL_PROJECT_MANIFEST_SCHEMA_VERSION = "1.5.0" as const;
 export const REAL_PROJECT_MANIFEST_LIMITS = {
   maxSamples: 32,
   maxPathLength: 4_096,
@@ -77,10 +82,13 @@ export const REAL_PROJECT_COMPONENT_ROLES = [
   "POWER_INPUT",
   "LDO",
   "DC_DC",
+  "POWER_SWITCH_CANDIDATE",
   "REFERENCE_SOURCE",
   "CRYSTAL_OSCILLATOR",
+  "CLOCK_BUFFER_CANDIDATE",
   "MEMORY",
   "TRANSCEIVER",
+  "ISOLATOR_CANDIDATE",
   "CONNECTOR",
   "PROTECTION_CANDIDATE",
   "FILTER_CANDIDATE",
@@ -134,6 +142,64 @@ export interface RealProjectSemanticBaseline {
   readonly requiredMcuActiveInterfaceTypes?: readonly IrInterfaceType[];
 }
 
+export const REAL_PROJECT_RESOURCE_TYPES = [
+  "POWER",
+  "CLOCK",
+  "RESET_BOOT",
+  "MCU_PIN"
+] as const satisfies readonly IrResourceType[];
+
+export const REAL_PROJECT_RESOURCE_EDGE_KINDS = [
+  "POWER_SOURCE_ENTRY",
+  "POWER_CONVERSION",
+  "POWER_SWITCH_TRANSFER_CANDIDATE",
+  "POWER_TRANSFER_CANDIDATE",
+  "POWER_LOAD",
+  "CLOCK_SOURCE_OUTPUT",
+  "CLOCK_BUFFER_INPUT",
+  "CLOCK_BUFFER_OUTPUT",
+  "CLOCK_SINK_INPUT",
+  "RESET_SOURCE_OUTPUT",
+  "RESET_EXTERNAL_SOURCE_CANDIDATE",
+  "RESET_MANUAL_SOURCE_CANDIDATE",
+  "RESET_SINK_INPUT",
+  "RESET_BIAS_CANDIDATE",
+  "BOOT_STRAP_INPUT",
+  "BOOT_BIAS_CANDIDATE",
+  "MCU_PIN_CONNECTION"
+] as const satisfies readonly IrResourceEdgeKind[];
+
+export interface RealProjectResourceBaseline {
+  readonly resourceEdges: number;
+  readonly byType: Readonly<Record<IrResourceType, number>>;
+  readonly byKind: Readonly<Record<IrResourceEdgeKind, number>>;
+  readonly byStatus: {
+    readonly candidate: number;
+    readonly unresolved: number;
+  };
+  readonly byActivity: {
+    readonly active: number;
+    readonly excludedDnp: number;
+    readonly assemblyUnknown: number;
+  };
+  readonly mcuPinUsage: {
+    readonly mcuCount: number;
+    readonly pins: number;
+    readonly usedBoundNetlist: number;
+    readonly usedCandidate: number;
+    readonly unusedConfirmed: number;
+    readonly unknown: number;
+    readonly byResourceStatus: {
+      readonly used: number;
+      readonly explicitNc: number;
+      readonly unused: number;
+      readonly unknown: number;
+      readonly dnpComponent: number;
+    };
+  };
+  readonly requiredKinds?: readonly IrResourceEdgeKind[];
+}
+
 export interface RealProjectSampleManifest {
   readonly sampleId: string;
   readonly projectPath: string;
@@ -149,6 +215,7 @@ export interface RealProjectSampleManifest {
   readonly assemblyBaseline?: RealProjectAssemblyBaseline;
   readonly busBaseline?: RealProjectBusBaseline;
   readonly semanticBaseline: RealProjectSemanticBaseline;
+  readonly resourceBaseline: RealProjectResourceBaseline;
 }
 
 export interface RealProjectManifest {
@@ -157,6 +224,8 @@ export interface RealProjectManifest {
   readonly packageAcceptanceSampleId: string;
   readonly packageAssemblyAcceptanceSampleId: string;
   readonly packageSemanticAcceptanceSampleId: string;
+  readonly packageResourceAcceptanceSampleId: string;
+  readonly packageMcuPinAcceptanceSampleId: string;
   readonly samples: readonly RealProjectSampleManifest[];
 }
 
@@ -620,6 +689,173 @@ function semantic(
   };
 }
 
+function resource(
+  value: unknown,
+  field: string
+): RealProjectResourceBaseline {
+  const record = object(value, field);
+  exactKeys(
+    record,
+    ["resourceEdges", "byType", "byKind", "byStatus", "byActivity", "mcuPinUsage"],
+    ["requiredKinds"],
+    field
+  );
+  const resourceEdges = count(record.resourceEdges, `${field}.resourceEdges`);
+  const typeRecord = object(record.byType, `${field}.byType`);
+  exactKeys(typeRecord, REAL_PROJECT_RESOURCE_TYPES, [], `${field}.byType`);
+  const byType = Object.fromEntries(
+    REAL_PROJECT_RESOURCE_TYPES.map((type) => [
+      type,
+      count(typeRecord[type], `${field}.byType.${type}`)
+    ])
+  ) as unknown as Readonly<Record<IrResourceType, number>>;
+  const kindRecord = object(record.byKind, `${field}.byKind`);
+  exactKeys(
+    kindRecord,
+    REAL_PROJECT_RESOURCE_EDGE_KINDS,
+    [],
+    `${field}.byKind`
+  );
+  const byKind = Object.fromEntries(
+    REAL_PROJECT_RESOURCE_EDGE_KINDS.map((kind) => [
+      kind,
+      count(kindRecord[kind], `${field}.byKind.${kind}`)
+    ])
+  ) as unknown as Readonly<Record<IrResourceEdgeKind, number>>;
+  const statusRecord = object(record.byStatus, `${field}.byStatus`);
+  exactKeys(statusRecord, ["candidate", "unresolved"], [], `${field}.byStatus`);
+  const byStatus = {
+    candidate: count(statusRecord.candidate, `${field}.byStatus.candidate`),
+    unresolved: count(statusRecord.unresolved, `${field}.byStatus.unresolved`)
+  };
+  const activityRecord = object(record.byActivity, `${field}.byActivity`);
+  exactKeys(
+    activityRecord,
+    ["active", "excludedDnp", "assemblyUnknown"],
+    [],
+    `${field}.byActivity`
+  );
+  const byActivity = {
+    active: count(activityRecord.active, `${field}.byActivity.active`),
+    excludedDnp: count(
+      activityRecord.excludedDnp,
+      `${field}.byActivity.excludedDnp`
+    ),
+    assemblyUnknown: count(
+      activityRecord.assemblyUnknown,
+      `${field}.byActivity.assemblyUnknown`
+    )
+  };
+  const usageRecord = object(record.mcuPinUsage, `${field}.mcuPinUsage`);
+  exactKeys(
+    usageRecord,
+    [
+      "mcuCount",
+      "pins",
+      "usedBoundNetlist",
+      "usedCandidate",
+      "unusedConfirmed",
+      "unknown",
+      "byResourceStatus"
+    ],
+    [],
+    `${field}.mcuPinUsage`
+  );
+  const resourceStatusRecord = object(
+    usageRecord.byResourceStatus,
+    `${field}.mcuPinUsage.byResourceStatus`
+  );
+  exactKeys(
+    resourceStatusRecord,
+    ["used", "explicitNc", "unused", "unknown", "dnpComponent"],
+    [],
+    `${field}.mcuPinUsage.byResourceStatus`
+  );
+  const byResourceStatus = {
+    used: count(
+      resourceStatusRecord.used,
+      `${field}.mcuPinUsage.byResourceStatus.used`
+    ),
+    explicitNc: count(
+      resourceStatusRecord.explicitNc,
+      `${field}.mcuPinUsage.byResourceStatus.explicitNc`
+    ),
+    unused: count(
+      resourceStatusRecord.unused,
+      `${field}.mcuPinUsage.byResourceStatus.unused`
+    ),
+    unknown: count(
+      resourceStatusRecord.unknown,
+      `${field}.mcuPinUsage.byResourceStatus.unknown`
+    ),
+    dnpComponent: count(
+      resourceStatusRecord.dnpComponent,
+      `${field}.mcuPinUsage.byResourceStatus.dnpComponent`
+    )
+  };
+  const mcuPinUsage = {
+    mcuCount: count(usageRecord.mcuCount, `${field}.mcuPinUsage.mcuCount`),
+    pins: count(usageRecord.pins, `${field}.mcuPinUsage.pins`),
+    usedBoundNetlist: count(
+      usageRecord.usedBoundNetlist,
+      `${field}.mcuPinUsage.usedBoundNetlist`
+    ),
+    usedCandidate: count(
+      usageRecord.usedCandidate,
+      `${field}.mcuPinUsage.usedCandidate`
+    ),
+    unusedConfirmed: count(
+      usageRecord.unusedConfirmed,
+      `${field}.mcuPinUsage.unusedConfirmed`
+    ),
+    unknown: count(usageRecord.unknown, `${field}.mcuPinUsage.unknown`),
+    byResourceStatus
+  };
+  if (
+    Object.values(byType).reduce((total, item) => total + item, 0) !== resourceEdges ||
+    Object.values(byKind).reduce((total, item) => total + item, 0) !== resourceEdges ||
+    byStatus.candidate + byStatus.unresolved !== resourceEdges ||
+    byActivity.active + byActivity.excludedDnp + byActivity.assemblyUnknown !==
+      resourceEdges ||
+    mcuPinUsage.usedBoundNetlist +
+        mcuPinUsage.usedCandidate +
+        mcuPinUsage.unusedConfirmed +
+        mcuPinUsage.unknown !==
+      mcuPinUsage.pins ||
+    Object.values(byResourceStatus).reduce((total, item) => total + item, 0) !==
+      mcuPinUsage.pins
+  ) {
+    invalid(`${field} 的资源边或 MCU 引脚分类计数不守恒`);
+  }
+  let requiredKinds: readonly IrResourceEdgeKind[] | undefined;
+  if (record.requiredKinds !== undefined) {
+    if (!Array.isArray(record.requiredKinds)) {
+      invalid(`${field}.requiredKinds 必须是数组`);
+    }
+    requiredKinds = record.requiredKinds.map((item, index) => {
+      if (!REAL_PROJECT_RESOURCE_EDGE_KINDS.includes(item as IrResourceEdgeKind)) {
+        invalid(`${field}.requiredKinds[${index}] 不受支持`);
+      }
+      return item as IrResourceEdgeKind;
+    });
+    if (requiredKinds.length === 0 || new Set(requiredKinds).size !== requiredKinds.length) {
+      invalid(`${field}.requiredKinds 必须非空且无重复`);
+    }
+    for (const kind of requiredKinds) {
+      if (byKind[kind] === 0) invalid(`${field}.requiredKinds.${kind} 没有对应资源边`);
+    }
+  }
+  return {
+    resourceEdges,
+    byType,
+    byKind,
+    byStatus,
+    byActivity,
+    mcuPinUsage,
+    ...(requiredKinds === undefined ? {} : { requiredKinds })
+  };
+}
+
 function sample(value: unknown, index: number): RealProjectSampleManifest {
   const field = `samples[${index}]`;
   const record = object(value, field);
@@ -633,7 +869,8 @@ function sample(value: unknown, index: number): RealProjectSampleManifest {
       "netlistSha256",
       "expectedDiagnostics",
       "comparisonBaseline",
-      "semanticBaseline"
+      "semanticBaseline",
+      "resourceBaseline"
     ],
     ["hierarchyBaseline", "assemblyBaseline", "busBaseline"],
     field
@@ -673,6 +910,10 @@ function sample(value: unknown, index: number): RealProjectSampleManifest {
       record.semanticBaseline,
       `${field}.semanticBaseline`
     ),
+    resourceBaseline: resource(
+      record.resourceBaseline,
+      `${field}.resourceBaseline`
+    ),
     ...(record.hierarchyBaseline === undefined
       ? {}
       : {
@@ -707,6 +948,8 @@ export function parseRealProjectManifest(value: unknown): RealProjectManifest {
       "packageAcceptanceSampleId",
       "packageAssemblyAcceptanceSampleId",
       "packageSemanticAcceptanceSampleId",
+      "packageResourceAcceptanceSampleId",
+      "packageMcuPinAcceptanceSampleId",
       "samples"
     ],
     [],
@@ -782,12 +1025,67 @@ export function parseRealProjectManifest(value: unknown): RealProjectManifest {
       "packageSemanticAcceptanceSampleId 必须引用含 MCU 和实际活动接口断言的样本"
     );
   }
+  const packageResourceAcceptanceSampleId = string(
+    root.packageResourceAcceptanceSampleId,
+    "packageResourceAcceptanceSampleId"
+  );
+  const resourceAcceptance = samples.find(
+    (item) => item.sampleId === packageResourceAcceptanceSampleId
+  );
+  const requiredKinds = resourceAcceptance?.resourceBaseline.requiredKinds;
+  const requiredKindSet = new Set(requiredKinds ?? []);
+  const hasResetBootPath = [
+    "RESET_SOURCE_OUTPUT",
+    "RESET_SINK_INPUT",
+    "RESET_BIAS_CANDIDATE",
+    "BOOT_STRAP_INPUT",
+    "BOOT_BIAS_CANDIDATE"
+  ].some((kind) => requiredKindSet.has(kind as IrResourceEdgeKind));
+  if (
+    resourceAcceptance === undefined ||
+    requiredKinds === undefined ||
+    resourceAcceptance.resourceBaseline.byType.POWER === 0 ||
+    resourceAcceptance.resourceBaseline.byType.CLOCK === 0 ||
+    resourceAcceptance.resourceBaseline.byType.RESET_BOOT === 0 ||
+    !requiredKindSet.has("POWER_CONVERSION") ||
+    !requiredKindSet.has("CLOCK_SOURCE_OUTPUT") ||
+    !requiredKindSet.has("CLOCK_SINK_INPUT") ||
+    !hasResetBootPath
+  ) {
+    invalid(
+      "packageResourceAcceptanceSampleId 必须覆盖电源转换、外部时钟和复位/启动"
+    );
+  }
+  const packageMcuPinAcceptanceSampleId = string(
+    root.packageMcuPinAcceptanceSampleId,
+    "packageMcuPinAcceptanceSampleId"
+  );
+  const mcuPinAcceptance = samples.find(
+    (item) => item.sampleId === packageMcuPinAcceptanceSampleId
+  );
+  const mcuRequiredKinds = new Set(
+    mcuPinAcceptance?.resourceBaseline.requiredKinds ?? []
+  );
+  if (
+    mcuPinAcceptance === undefined ||
+    !mcuRequiredKinds.has("MCU_PIN_CONNECTION") ||
+    mcuPinAcceptance.resourceBaseline.byType.MCU_PIN === 0 ||
+    mcuPinAcceptance.resourceBaseline.mcuPinUsage.mcuCount === 0 ||
+    mcuPinAcceptance.resourceBaseline.mcuPinUsage.pins === 0 ||
+    mcuPinAcceptance.resourceBaseline.mcuPinUsage.unusedConfirmed === 0
+  ) {
+    invalid(
+      "packageMcuPinAcceptanceSampleId 必须覆盖 MCU 引脚和显式未使用引脚"
+    );
+  }
   return {
     schemaVersion: REAL_PROJECT_MANIFEST_SCHEMA_VERSION,
     baselineId,
     packageAcceptanceSampleId,
     packageAssemblyAcceptanceSampleId,
     packageSemanticAcceptanceSampleId,
+    packageResourceAcceptanceSampleId,
+    packageMcuPinAcceptanceSampleId,
     samples
   };
 }

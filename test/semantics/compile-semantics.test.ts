@@ -334,3 +334,47 @@ test("稳压器角色可由显式引脚结构确定性识别", () => {
     "component-role.dc-dc.pin-structure.v1"
   );
 });
+
+test("显式器件身份形成电源开关和时钟缓冲候选而不依赖模型猜测", () => {
+  const powerSwitch = component("power-switch", "U4");
+  const clockBuffer = component("clock-buffer", "U5");
+  const isolator = component("isolator", "U6");
+  const result = compileSemantics(
+    [powerSwitch, clockBuffer, isolator],
+    [
+      device("power-switch", "High-side load switch"),
+      device("clock-buffer", "Low-jitter clock fanout buffer"),
+      device("isolator", "Galvanic digital isolator")
+    ],
+    [symbol("power-switch"), symbol("clock-buffer"), symbol("isolator")],
+    [
+      pin("power-switch", "1", "VIN", "+3V3"),
+      pin("power-switch", "2", "VOUT", "+3V3_SW"),
+      pin("clock-buffer", "3", "CLK_IN", "REF_CLK"),
+      pin("clock-buffer", "4", "CLK_OUT0", "CLK_A"),
+      pin("clock-buffer", "5", "CLK_OUT1", "CLK_B"),
+      pin("isolator", "6", "VDD", "+3V3"),
+      pin("isolator", "7", "VDD", "+3V3_ISO")
+    ]
+  );
+  const byComponent = new Map(
+    result.componentSemantics.map((item) => [item.componentId, item])
+  );
+  assert.equal(
+    byComponent.get("power-switch")?.primaryRole,
+    "POWER_SWITCH_CANDIDATE"
+  );
+  assert.equal(
+    byComponent.get("clock-buffer")?.primaryRole,
+    "CLOCK_BUFFER_CANDIDATE"
+  );
+  assert.equal(byComponent.get("isolator")?.primaryRole, "ISOLATOR_CANDIDATE");
+  assert.equal(
+    byComponent
+      .get("isolator")
+      ?.powerDomains.every(
+        (item) => item.isolationStatus === "ISOLATION_CANDIDATE"
+      ),
+    true
+  );
+});

@@ -148,11 +148,11 @@ test("上下文包以确定性纯原理图清单、逐文件哈希和私有权�
   assert.equal(first.packageSha256, second.packageSha256);
   assert.equal(first.manifestSha256, second.manifestSha256);
   assert.equal(firstManifestText, secondManifestText);
-  assert.equal(manifest.schemaVersion, "1.0.0");
-  assert.equal(manifest.generator.version, "0.1.0");
+  assert.equal(manifest.schemaVersion, "1.1.0");
+  assert.equal(manifest.generator.version, "0.2.0");
   assert.equal(manifest.source.electricalTruth, "NOT_VERIFIED");
-  assert.equal(manifest.files.length, 20);
-  assert.equal(first.files, 21);
+  assert.equal(manifest.files.length, 32);
+  assert.equal(first.files, 33);
   assert.equal(
     manifest.files.some((file) =>
       /(?:^|[-.])(pcb|footprint)(?:[-.]|$)/u.test(file.path)
@@ -176,11 +176,41 @@ test("上下文包以确定性纯原理图清单、逐文件哈希和私有权�
     path.join(firstPath, "schematic-tables.jsonl"),
     "utf8"
   );
+  const buses = await readFile(path.join(firstPath, "buses.jsonl"), "utf8");
+  const componentSemantics = await readFile(
+    path.join(firstPath, "component-semantics.jsonl"),
+    "utf8"
+  );
+  const interfaces = await readFile(
+    path.join(firstPath, "interfaces.jsonl"),
+    "utf8"
+  );
+  const resourceEdges = await readFile(
+    path.join(firstPath, "resource-edges.jsonl"),
+    "utf8"
+  );
+  const resourceNodes = await readFile(
+    path.join(firstPath, "resource-nodes.jsonl"),
+    "utf8"
+  );
+  const mcuPinResources = await readFile(
+    path.join(firstPath, "mcu-pin-resources.jsonl"),
+    "utf8"
+  );
 
   assert.equal(components.includes("private-page-title"), false);
   assert.equal(annotations.includes("private-design-note"), true);
   assert.equal(schematicGraphics.includes("private-page-poly"), true);
   assert.equal(schematicTables.includes("private-table-value"), true);
+  assert.equal(buses.endsWith("\n") || buses === "", true);
+  assert.equal(componentSemantics.endsWith("\n") || componentSemantics === "", true);
+  assert.equal(interfaces.endsWith("\n") || interfaces === "", true);
+  assert.equal(resourceEdges.endsWith("\n") || resourceEdges === "", true);
+  assert.equal(resourceNodes.endsWith("\n") || resourceNodes === "", true);
+  assert.equal(
+    mcuPinResources.endsWith("\n") || mcuPinResources === "",
+    true
+  );
 
   const mode = (await stat(path.join(firstPath, "manifest.json"))).mode & 0o777;
   if (enforcesPosixModes()) {
@@ -750,7 +780,7 @@ test("context-pack CLI 只返回脱敏收据，私有事实仅写入显式目录
   assert.equal(receipt.gate, "AI_CONTEXT_PACK_WRITTEN");
   assert.equal(receipt.electricalTruth, "NOT_VERIFIED");
   assert.match(receipt.packageSha256, /^[a-f0-9]{64}$/);
-  assert.equal(receipt.files, 21);
+  assert.equal(receipt.files, 33);
   assert.equal(stdout.includes(archivePath), false);
   assert.equal(stdout.includes(outputPath), false);
   assert.equal(stdout.includes("private-page-title"), false);

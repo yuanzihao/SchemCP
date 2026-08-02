@@ -7,6 +7,8 @@ import {
   REAL_PROJECT_COMPONENT_ROLES,
   REAL_PROJECT_INTERFACE_MATRIX_KEYS,
   REAL_PROJECT_INTERFACE_TYPES,
+  REAL_PROJECT_RESOURCE_EDGE_KINDS,
+  REAL_PROJECT_RESOURCE_TYPES,
   RealProjectManifestError
 } from "../../src/verification/real-project-manifest.js";
 
@@ -39,6 +41,57 @@ function semanticBaseline(): Readonly<Record<string, unknown>> {
   };
 }
 
+function resourceBaseline(): Readonly<Record<string, unknown>> {
+  const nonzeroKinds = new Map<string, number>([
+    ["POWER_CONVERSION", 1],
+    ["POWER_LOAD", 1],
+    ["CLOCK_SOURCE_OUTPUT", 1],
+    ["CLOCK_SINK_INPUT", 1],
+    ["RESET_SINK_INPUT", 1],
+    ["BOOT_BIAS_CANDIDATE", 1],
+    ["MCU_PIN_CONNECTION", 1]
+  ]);
+  return {
+    resourceEdges: 7,
+    byType: Object.fromEntries(
+      REAL_PROJECT_RESOURCE_TYPES.map((type) => [
+        type,
+        type === "POWER" || type === "CLOCK" || type === "RESET_BOOT" ? 2 : 1
+      ])
+    ),
+    byKind: Object.fromEntries(
+      REAL_PROJECT_RESOURCE_EDGE_KINDS.map((kind) => [
+        kind,
+        nonzeroKinds.get(kind) ?? 0
+      ])
+    ),
+    byStatus: { candidate: 7, unresolved: 0 },
+    byActivity: { active: 7, excludedDnp: 0, assemblyUnknown: 0 },
+    mcuPinUsage: {
+      mcuCount: 1,
+      pins: 2,
+      usedBoundNetlist: 1,
+      usedCandidate: 0,
+      unusedConfirmed: 1,
+      unknown: 0,
+      byResourceStatus: {
+        used: 1,
+        explicitNc: 0,
+        unused: 1,
+        unknown: 0,
+        dnpComponent: 0
+      }
+    },
+    requiredKinds: [
+      "POWER_CONVERSION",
+      "CLOCK_SOURCE_OUTPUT",
+      "CLOCK_SINK_INPUT",
+      "RESET_SINK_INPUT",
+      "MCU_PIN_CONNECTION"
+    ]
+  };
+}
+
 function sample(sampleId: string): Readonly<Record<string, unknown>> {
   return {
     sampleId,
@@ -59,6 +112,7 @@ function sample(sampleId: string): Readonly<Record<string, unknown>> {
       excludedCandidatePins: 2
     },
     semanticBaseline: semanticBaseline(),
+    resourceBaseline: resourceBaseline(),
     hierarchyBaseline: {
       instanceDocuments: 1,
       instanceContexts: 1,
@@ -106,18 +160,20 @@ function sample(sampleId: string): Readonly<Record<string, unknown>> {
 
 function manifest(): Readonly<Record<string, unknown>> {
   return {
-    schemaVersion: "1.3.0",
-    baselineId: "v0.2-m4",
+    schemaVersion: "1.5.0",
+    baselineId: "v0.2-m5",
     packageAcceptanceSampleId: "real-02",
     packageAssemblyAcceptanceSampleId: "real-01",
     packageSemanticAcceptanceSampleId: "real-02",
+    packageResourceAcceptanceSampleId: "real-02",
+    packageMcuPinAcceptanceSampleId: "real-02",
     samples: [sample("real-02"), sample("real-01")]
   };
 }
 
 test("真实工程私有清单严格解析、排序并保留里程碑基线", () => {
   const parsed = parseRealProjectManifest(manifest());
-  assert.equal(parsed.baselineId, "v0.2-m4");
+  assert.equal(parsed.baselineId, "v0.2-m5");
   assert.deepEqual(
     parsed.samples.map((item) => item.sampleId),
     ["real-01", "real-02"]
@@ -128,11 +184,29 @@ test("真实工程私有清单严格解析、排序并保留里程碑基线", ()
   );
   assert.equal(parsed.samples[0]?.busBaseline?.busEntries, 3);
   assert.equal(parsed.samples[0]?.semanticBaseline.roles.MCU_MPU, 1);
+  assert.equal(parsed.samples[0]?.resourceBaseline.byType.POWER, 2);
 });
 
 test("真实工程清单拒绝未知字段、重复样本和不守恒计数", () => {
+  const broken = sample("real-02");
   assert.throws(
     () => parseRealProjectManifest({ ...manifest(), privateNote: "x" }),
+    (error: unknown) => error instanceof RealProjectManifestError
+  );
+  assert.throws(
+    () =>
+      parseRealProjectManifest({
+        ...manifest(),
+        samples: [
+          {
+            ...broken,
+            resourceBaseline: {
+              ...(broken.resourceBaseline as Record<string, unknown>),
+              resourceEdges: 8
+            }
+          }
+        ]
+      }),
     (error: unknown) => error instanceof RealProjectManifestError
   );
   assert.throws(
@@ -143,7 +217,6 @@ test("真实工程清单拒绝未知字段、重复样本和不守恒计数", ()
       }),
     (error: unknown) => error instanceof RealProjectManifestError
   );
-  const broken = sample("real-02");
   assert.throws(
     () =>
       parseRealProjectManifest({

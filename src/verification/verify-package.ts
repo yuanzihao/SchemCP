@@ -324,7 +324,7 @@ function parsePackReceipt(stdout: string): PackReceipt {
 
 function assertPackageContents(receipt: PackReceipt): void {
   assert.equal(receipt.name, "@yuanzihao/schemcp");
-  assert.equal(receipt.version, "0.1.0");
+  assert.equal(receipt.version, "0.2.0");
   assert.ok(receipt.size > 0 && receipt.size <= MAX_PACKAGE_BYTES);
   assert.ok(
     receipt.unpackedSize > 0 && receipt.unpackedSize <= MAX_UNPACKED_BYTES
@@ -422,6 +422,9 @@ async function main(): Promise<void> {
   const assemblyProjectArgument = process.argv[3];
   const semanticProjectArgument = process.argv[4];
   const semanticInterfaceTypesArgument = process.argv[5];
+  const resourceProjectArgument = process.argv[6];
+  const mcuPinProjectArgument = process.argv[7];
+  const mcuPinNetlistArgument = process.argv[8];
   if (projectArgument !== undefined) {
     assert.equal(path.isAbsolute(projectArgument), true, "真实工程必须使用绝对路径");
     assert.equal(path.extname(projectArgument).toLowerCase(), ".epro2");
@@ -444,6 +447,37 @@ async function main(): Promise<void> {
     assert.equal(path.extname(semanticProjectArgument).toLowerCase(), ".epro2");
     assert.ok(projectArgument !== undefined, "语义真实工程不能脱离主验收工程");
   }
+  if (resourceProjectArgument !== undefined) {
+    assert.equal(
+      path.isAbsolute(resourceProjectArgument),
+      true,
+      "P2 资源真实工程必须使用绝对路径"
+    );
+    assert.equal(path.extname(resourceProjectArgument).toLowerCase(), ".epro2");
+    assert.ok(projectArgument !== undefined, "P2 资源工程不能脱离主验收工程");
+  }
+  if (mcuPinProjectArgument !== undefined) {
+    assert.equal(
+      path.isAbsolute(mcuPinProjectArgument),
+      true,
+      "MCU 引脚真实工程必须使用绝对路径"
+    );
+    assert.equal(path.extname(mcuPinProjectArgument).toLowerCase(), ".epro2");
+    assert.ok(projectArgument !== undefined, "MCU 引脚工程不能脱离主验收工程");
+  }
+  if (mcuPinNetlistArgument !== undefined) {
+    assert.equal(
+      path.isAbsolute(mcuPinNetlistArgument),
+      true,
+      "MCU 引脚真实网表必须使用绝对路径"
+    );
+    assert.equal(path.extname(mcuPinNetlistArgument).toLowerCase(), ".enet");
+  }
+  assert.equal(
+    mcuPinProjectArgument === undefined,
+    mcuPinNetlistArgument === undefined,
+    "MCU 引脚工程和绑定网表必须同时提供"
+  );
   const parsedSemanticInterfaceTypes: unknown =
     semanticInterfaceTypesArgument === undefined
       ? []
@@ -576,7 +610,7 @@ async function main(): Promise<void> {
         env
       )
     ).trim();
-    assert.equal(version, "0.1.0");
+    assert.equal(version, "0.2.0");
 
     const generic = JSON.parse(
       await run(
@@ -1256,6 +1290,212 @@ async function main(): Promise<void> {
             );
           }
         }
+
+        if (
+          resourceProjectArgument !== undefined
+        ) {
+          const resourceOpened = structured(
+            await client.callTool({
+              name: "open_schematic_project",
+              arguments: { projectPath: resourceProjectArgument }
+            })
+          );
+          assert.equal(resourceOpened.ok, true);
+          const resourceHandle = (
+            resourceOpened.project as { readonly projectHandle: string }
+          ).projectHandle;
+          let powerCursor: string | undefined;
+          let powerRootCount = 0;
+          const powerKinds = new Set<string>();
+          do {
+            const power = structured(
+              await client.callTool({
+                name: "get_power_tree",
+                arguments: {
+                  projectHandle: resourceHandle,
+                  maxDepth: 8,
+                  limit: 50,
+                  ...(powerCursor === undefined ? {} : { cursor: powerCursor })
+                }
+              })
+            );
+            assert.equal(power.ok, true);
+            powerRootCount = (power.roots as readonly unknown[]).length;
+            const page = power.edges as {
+              readonly items: readonly {
+                readonly edge: { readonly kind: string };
+              }[];
+              readonly nextCursor?: string;
+            };
+            for (const item of page.items) powerKinds.add(item.edge.kind);
+            powerCursor = page.nextCursor;
+          } while (powerCursor !== undefined);
+          assert.ok(powerRootCount > 1, "真实 P2 工程必须覆盖多个电源根");
+          assert.equal(
+            powerKinds.has("POWER_CONVERSION"),
+            true,
+            "真实 P2 工程必须覆盖明确电源转换边"
+          );
+
+          const clock = structured(
+            await client.callTool({
+              name: "get_clock_tree",
+              arguments: {
+                projectHandle: resourceHandle,
+                maxDepth: 8,
+                limit: 50
+              }
+            })
+          );
+          const clockKinds = new Set(
+            (
+              clock.edges as {
+                readonly items: readonly {
+                  readonly edge: { readonly kind: string };
+                }[];
+              }
+            ).items.map((item) => item.edge.kind)
+          );
+          assert.equal(
+            clock.ok,
+            true,
+            "真实 P2 工程外部时钟树调用必须成功"
+          );
+          assert.equal(
+            clockKinds.has("CLOCK_SOURCE_OUTPUT"),
+            true,
+            "真实 P2 工程必须覆盖外部时钟源"
+          );
+          assert.equal(
+            clockKinds.has("CLOCK_SINK_INPUT"),
+            true,
+            "真实 P2 工程必须覆盖外部时钟汇"
+          );
+
+          const resetBoot = structured(
+            await client.callTool({
+              name: "get_reset_boot_paths",
+              arguments: {
+                projectHandle: resourceHandle,
+                maxDepth: 8,
+                limit: 50
+              }
+            })
+          );
+          assert.ok(
+            (resetBoot.edges as { readonly total: number }).total > 0,
+            "真实 P2 工程必须覆盖复位或启动绑带路径"
+          );
+
+        }
+
+        if (
+          mcuPinProjectArgument !== undefined &&
+          mcuPinNetlistArgument !== undefined
+        ) {
+          const mcuPinOpened = structured(
+            await client.callTool({
+              name: "open_schematic_project",
+              arguments: { projectPath: mcuPinProjectArgument }
+            })
+          );
+          assert.equal(
+            mcuPinOpened.ok,
+            true,
+            "真实 MCU 引脚工程必须能够安装态打开"
+          );
+          const mcuPinHandle = (
+            mcuPinOpened.project as { readonly projectHandle: string }
+          ).projectHandle;
+          const attached = structured(
+            await client.callTool({
+              name: "attach_schematic_netlist",
+              arguments: {
+                projectHandle: mcuPinHandle,
+                netlistPath: mcuPinNetlistArgument
+              }
+            })
+          );
+          assert.equal(
+            attached.ok,
+            true,
+            "真实 MCU 引脚工程必须能够绑定对应 .enet"
+          );
+
+          let usageCursor: string | undefined;
+          let unusedConfirmed = 0;
+          let usageTotal = 0;
+          let mcuCount = 0;
+          const resourceStatuses = new Set<string>();
+          let hasMcuResourceRole = false;
+          let hasPowerDomain = false;
+          do {
+            const usage = structured(
+              await client.callTool({
+                name: "get_mcu_pin_usage",
+                arguments: {
+                  projectHandle: mcuPinHandle,
+                  limit: 10,
+                  ...(usageCursor === undefined ? {} : { cursor: usageCursor })
+                }
+              })
+            );
+            assert.equal(
+              usage.ok,
+              true,
+              `真实 MCU 引脚分页查询必须成功：${JSON.stringify(usage.error ?? null)}`
+            );
+            mcuCount = usage.mcuCount as number;
+            const page = usage.pins as {
+              readonly total: number;
+              readonly items: readonly {
+                readonly status: string;
+                readonly usageStatus: string;
+                readonly powerDomains: readonly unknown[];
+                readonly resourceRoles: readonly {
+                  readonly resourceType: string;
+                  readonly kind: string;
+                }[];
+                readonly unresolvedReasons: readonly string[];
+              }[];
+              readonly nextCursor?: string;
+            };
+            usageTotal = page.total;
+            for (const item of page.items) {
+              resourceStatuses.add(item.status);
+              hasPowerDomain ||= item.powerDomains.length > 0;
+              hasMcuResourceRole ||= item.resourceRoles.some(
+                (role) =>
+                  role.resourceType === "MCU_PIN" &&
+                  role.kind === "MCU_PIN_CONNECTION"
+              );
+              if (item.status === "UNKNOWN") {
+                assert.ok(
+                  item.unresolvedReasons.length > 0,
+                  "真实 MCU UNKNOWN 引脚必须给出稳定未解析原因"
+                );
+              }
+            }
+            unusedConfirmed += page.items.filter(
+              (item) => item.usageStatus === "UNUSED_CONFIRMED"
+            ).length;
+            usageCursor = page.nextCursor;
+          } while (usageCursor !== undefined);
+          assert.ok(mcuCount > 0 && usageTotal > 0, "真实 P2 工程必须覆盖 MCU 引脚");
+          assert.ok(
+            unusedConfirmed > 0,
+            "绑定真实 .enet 后必须确认至少一个显式未使用 MCU 引脚"
+          );
+          assert.equal(resourceStatuses.has("USED"), true);
+          assert.equal(
+            resourceStatuses.has("EXPLICIT_NC") ||
+              resourceStatuses.has("UNUSED"),
+            true,
+            "真实 MCU 工程必须覆盖目标级已确认未使用状态"
+          );
+          assert.equal(hasMcuResourceRole, true);
+          assert.equal(hasPowerDomain, true);
+        }
       }
     } finally {
       await client.close();
@@ -1266,7 +1506,7 @@ async function main(): Promise<void> {
         ok: true,
         gate: "INSTALLED_PACKAGE_VERIFIED",
         package: "@yuanzihao/schemcp",
-        version: "0.1.0",
+        version: "0.2.0",
         tarballSha256,
         packageBytes: firstReceipt.size,
         unpackedBytes: firstReceipt.unpackedSize,
@@ -1289,6 +1529,14 @@ async function main(): Promise<void> {
           semanticProjectArgument === undefined ? "NOT_REQUESTED" : "VERIFIED",
         realDnpInterfaceQuery:
           assemblyProjectArgument === undefined ? "NOT_REQUESTED" : "VERIFIED",
+        realPowerTreeQuery:
+          resourceProjectArgument === undefined ? "NOT_REQUESTED" : "VERIFIED",
+        realClockTreeQuery:
+          resourceProjectArgument === undefined ? "NOT_REQUESTED" : "VERIFIED",
+        realResetBootQuery:
+          resourceProjectArgument === undefined ? "NOT_REQUESTED" : "VERIFIED",
+        realMcuPinUsageQuery:
+          mcuPinProjectArgument === undefined ? "NOT_REQUESTED" : "VERIFIED",
         syntheticNetlistBinding:
           projectArgument === undefined ? "VERIFIED" : "NOT_REQUESTED",
         syntheticAssemblyTamper:

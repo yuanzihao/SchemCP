@@ -14,6 +14,7 @@ import { AppError, ERROR_CODES } from "../core/error.js";
 import { enforcesPosixModes } from "../core/filesystem-security.js";
 import type { EdaIr } from "../ir/model.js";
 import { EdaIrQueryIndex } from "../query/index.js";
+import { ComponentConnectivityQuery } from "../query/component-connectivity.js";
 import type {
   ContextPackFileReceipt,
   ContextPackManifest,
@@ -71,6 +72,31 @@ function allExplicitNets(ir: EdaIr): readonly unknown[] {
   return result;
 }
 
+function allMcuPinResources(ir: EdaIr): readonly unknown[] {
+  const query = new ComponentConnectivityQuery(new EdaIrQueryIndex(ir));
+  const result: unknown[] = [];
+  let cursor: string | undefined;
+  do {
+    const page = query.getMcuPinUsage({
+      limit: 10,
+      ...(cursor === undefined ? {} : { cursor })
+    }).pins;
+    result.push(...page.items);
+    cursor = page.nextCursor;
+  } while (cursor !== undefined);
+  return result;
+}
+
+function allPowerDomains(ir: EdaIr): readonly unknown[] {
+  return [
+    ...new Map(
+      ir.componentSemantics
+        .flatMap((item) => item.powerDomains)
+        .map((item) => [item.id, item])
+    ).values()
+  ].sort((left, right) => (left.id < right.id ? -1 : left.id > right.id ? 1 : 0));
+}
+
 function definitions(ir: EdaIr): readonly ContextFileDefinition[] {
   return [
     {
@@ -112,6 +138,71 @@ function definitions(ir: EdaIr): readonly ContextFileDefinition[] {
       path: "components.jsonl",
       mediaType: "application/x-ndjson",
       values: ir.components
+    },
+    {
+      path: "component-semantics.jsonl",
+      mediaType: "application/x-ndjson",
+      values: ir.componentSemantics
+    },
+    {
+      path: "interfaces.jsonl",
+      mediaType: "application/x-ndjson",
+      values: ir.interfaces
+    },
+    {
+      path: "power-domains.jsonl",
+      mediaType: "application/x-ndjson",
+      values: allPowerDomains(ir)
+    },
+    {
+      path: "resource-nodes.jsonl",
+      mediaType: "application/x-ndjson",
+      values: ir.resourceNodes
+    },
+    {
+      path: "resource-edges.jsonl",
+      mediaType: "application/x-ndjson",
+      values: ir.resourceEdges
+    },
+    {
+      path: "power-tree.jsonl",
+      mediaType: "application/x-ndjson",
+      values: ir.resourceEdges.filter((item) => item.resourceType === "POWER")
+    },
+    {
+      path: "clock-tree.jsonl",
+      mediaType: "application/x-ndjson",
+      values: ir.resourceEdges.filter((item) => item.resourceType === "CLOCK")
+    },
+    {
+      path: "reset-boot-paths.jsonl",
+      mediaType: "application/x-ndjson",
+      values: ir.resourceEdges.filter(
+        (item) => item.resourceType === "RESET_BOOT"
+      )
+    },
+    {
+      path: "mcu-pin-resources.jsonl",
+      mediaType: "application/x-ndjson",
+      values: allMcuPinResources(ir)
+    },
+    {
+      path: "resource-unresolved.jsonl",
+      mediaType: "application/x-ndjson",
+      values: ir.resourceEdges
+        .filter((item) => item.status === "UNRESOLVED")
+        .map((item) => ({
+          edgeId: item.id,
+          resourceType: item.resourceType,
+          kind: item.kind,
+          activityStatus: item.activityStatus,
+          unresolvedReasons: item.unresolvedReasons,
+          ruleId: item.ruleId,
+          evidenceClass: item.evidenceClass,
+          truthStatus: item.truthStatus,
+          semanticRuleSetVersion: item.semanticRuleSetVersion,
+          provenance: item.provenance
+        }))
     },
     {
       path: "schematic-annotations.jsonl",
@@ -162,6 +253,16 @@ function definitions(ir: EdaIr): readonly ContextFileDefinition[] {
       path: "wires.jsonl",
       mediaType: "application/x-ndjson",
       values: ir.wires
+    },
+    {
+      path: "buses.jsonl",
+      mediaType: "application/x-ndjson",
+      values: ir.buses
+    },
+    {
+      path: "bus-entries.jsonl",
+      mediaType: "application/x-ndjson",
+      values: ir.busEntries
     },
     {
       path: "explicit-nets.jsonl",
@@ -249,10 +350,10 @@ function createManifest(
 ): ContextPackManifest {
   const payloadBytes = files.reduce((total, file) => total + file.bytes, 0);
   const base = {
-    schemaVersion: "1.0.0" as const,
+    schemaVersion: "1.1.0" as const,
     generator: {
       name: "@yuanzihao/schemcp" as const,
-      version: "0.1.0" as const
+      version: "0.2.0" as const
     },
     source: {
       format: ir.source.format,
@@ -271,6 +372,19 @@ function createManifest(
       explicitWireNetLabels: "AVAILABLE_NOT_FULL_NET_GRAPH" as const,
       pinConnectionCandidates: "AVAILABLE_NOT_VERIFIED" as const,
       variantsAndInstanceContexts: "AVAILABLE_EXPLICIT_METADATA" as const,
+      explicitBuses:
+        "AVAILABLE_EXPLICIT_NO_AUTOMATIC_RANGE_EXPANSION" as const,
+      componentSemantics:
+        "AVAILABLE_VERSIONED_DETERMINISTIC_RULES" as const,
+      interfaces: "AVAILABLE_CANDIDATES_NOT_VERIFIED" as const,
+      powerDomains:
+        "AVAILABLE_EXPLICIT_NET_CANDIDATES_NOT_VERIFIED" as const,
+      resourceGraphs:
+        "AVAILABLE_BOUNDED_CANDIDATES_NOT_VERIFIED" as const,
+      mcuPinResources:
+        "AVAILABLE_CONSERVATIVE_STATUS_NOT_VERIFIED" as const,
+      resourceEvidence:
+        "AVAILABLE_WITH_STABLE_UNRESOLVED_REASONS" as const,
       schematicAnnotations:
         "AVAILABLE_EXPLICIT_TEXT_SOURCE_NOT_VERIFIED_INTERPRETATION_NOT_PERFORMED" as const,
       schematicGraphicPrimitives:

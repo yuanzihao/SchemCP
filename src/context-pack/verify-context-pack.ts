@@ -22,6 +22,16 @@ const EXPECTED_FILES = [
   ["documents.jsonl", "application/x-ndjson"],
   ["variants.json", "application/json"],
   ["components.jsonl", "application/x-ndjson"],
+  ["component-semantics.jsonl", "application/x-ndjson"],
+  ["interfaces.jsonl", "application/x-ndjson"],
+  ["power-domains.jsonl", "application/x-ndjson"],
+  ["resource-nodes.jsonl", "application/x-ndjson"],
+  ["resource-edges.jsonl", "application/x-ndjson"],
+  ["power-tree.jsonl", "application/x-ndjson"],
+  ["clock-tree.jsonl", "application/x-ndjson"],
+  ["reset-boot-paths.jsonl", "application/x-ndjson"],
+  ["mcu-pin-resources.jsonl", "application/x-ndjson"],
+  ["resource-unresolved.jsonl", "application/x-ndjson"],
   ["schematic-annotations.jsonl", "application/x-ndjson"],
   ["schematic-graphic-primitives.jsonl", "application/x-ndjson"],
   ["schematic-tables.jsonl", "application/x-ndjson"],
@@ -32,6 +42,8 @@ const EXPECTED_FILES = [
   ["symbol-texts.jsonl", "application/x-ndjson"],
   ["symbol-pins.jsonl", "application/x-ndjson"],
   ["wires.jsonl", "application/x-ndjson"],
+  ["buses.jsonl", "application/x-ndjson"],
+  ["bus-entries.jsonl", "application/x-ndjson"],
   ["explicit-nets.jsonl", "application/x-ndjson"],
   ["instance-contexts.jsonl", "application/x-ndjson"],
   ["diagnostics.json", "application/json"],
@@ -76,7 +88,7 @@ function exactKeys(
   ) {
     fail(
       ERROR_CODES.CONTEXT_PACK_INVALID,
-      `${field} 字段集合不符合上下文包 1.0.0 契约。`
+      `${field} 字段集合不符合上下文包 1.1.0 契约。`
     );
   }
 }
@@ -152,10 +164,10 @@ function parseManifest(value: unknown): ContextPackManifest {
     ],
     "manifest"
   );
-  if (value.schemaVersion !== "1.0.0") {
+  if (value.schemaVersion !== "1.1.0") {
     fail(
       ERROR_CODES.CONTEXT_PACK_INVALID,
-      "manifest.schemaVersion 必须是 1.0.0。"
+      "manifest.schemaVersion 必须是 1.1.0。"
     );
   }
   if (!isObject(value.generator) || !isObject(value.source)) {
@@ -192,6 +204,13 @@ function parseManifest(value: unknown): ContextPackManifest {
       "explicitWireNetLabels",
       "pinConnectionCandidates",
       "variantsAndInstanceContexts",
+      "explicitBuses",
+      "componentSemantics",
+      "interfaces",
+      "powerDomains",
+      "resourceGraphs",
+      "mcuPinResources",
+      "resourceEvidence",
       "schematicAnnotations",
       "schematicGraphicPrimitives",
       "schematicTables",
@@ -204,7 +223,7 @@ function parseManifest(value: unknown): ContextPackManifest {
   );
   if (
     value.generator.name !== "@yuanzihao/schemcp" ||
-    value.generator.version !== "0.1.0" ||
+    value.generator.version !== "0.2.0" ||
     value.source.format !== "EASYEDA_V3_LOG" ||
     value.source.electricalTruth !== "NOT_VERIFIED" ||
     value.encoding.json !== "CANONICAL_JSON_LF" ||
@@ -212,7 +231,7 @@ function parseManifest(value: unknown): ContextPackManifest {
   ) {
     fail(
       ERROR_CODES.CONTEXT_PACK_INVALID,
-      "manifest 固定格式、生成器或真值边界不符合 1.0.0 契约。"
+      "manifest 固定格式、生成器或真值边界不符合 1.1.0 契约。"
     );
   }
   for (const field of [
@@ -246,7 +265,7 @@ function parseManifest(value: unknown): ContextPackManifest {
   ) {
     fail(
       ERROR_CODES.CONTEXT_PACK_INVALID,
-      "manifest.files 不符合上下文包 1.0.0 的固定文件清单或顺序。"
+      "manifest.files 不符合上下文包 1.1.0 的固定文件清单或顺序。"
     );
   }
   if (
@@ -290,6 +309,19 @@ function parseManifest(value: unknown): ContextPackManifest {
     explicitWireNetLabels: "AVAILABLE_NOT_FULL_NET_GRAPH" as const,
     pinConnectionCandidates: "AVAILABLE_NOT_VERIFIED" as const,
     variantsAndInstanceContexts: "AVAILABLE_EXPLICIT_METADATA" as const,
+    explicitBuses:
+      "AVAILABLE_EXPLICIT_NO_AUTOMATIC_RANGE_EXPANSION" as const,
+    componentSemantics:
+      "AVAILABLE_VERSIONED_DETERMINISTIC_RULES" as const,
+    interfaces: "AVAILABLE_CANDIDATES_NOT_VERIFIED" as const,
+    powerDomains:
+      "AVAILABLE_EXPLICIT_NET_CANDIDATES_NOT_VERIFIED" as const,
+    resourceGraphs:
+      "AVAILABLE_BOUNDED_CANDIDATES_NOT_VERIFIED" as const,
+    mcuPinResources:
+      "AVAILABLE_CONSERVATIVE_STATUS_NOT_VERIFIED" as const,
+    resourceEvidence:
+      "AVAILABLE_WITH_STABLE_UNRESOLVED_REASONS" as const,
     schematicAnnotations:
       "AVAILABLE_EXPLICIT_TEXT_SOURCE_NOT_VERIFIED_INTERPRETATION_NOT_PERFORMED" as const,
     schematicGraphicPrimitives:
@@ -313,10 +345,10 @@ function parseManifest(value: unknown): ContextPackManifest {
     );
   }
   return {
-    schemaVersion: "1.0.0",
+    schemaVersion: "1.1.0",
     generator: {
       name: "@yuanzihao/schemcp",
-      version: "0.1.0"
+      version: "0.2.0"
     },
     source: {
       format: "EASYEDA_V3_LOG",

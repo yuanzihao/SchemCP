@@ -14,7 +14,7 @@ SchemCP is a local-first, read-only, deterministic, and auditable Model Context 
 
 SchemCP is a schematic context service for MCP clients. The name can be read as `Sche[m] + MCP → SchemCP`, with the letter `M` shared by both words.
 
-Current version: `0.1.0`
+Current repository candidate: `0.2.0` (not published)
 
 MCP Registry name: `io.github.yuanzihao/schemcp`
 
@@ -22,7 +22,7 @@ npm package: `@yuanzihao/schemcp`
 
 License: Apache-2.0
 
-> `@yuanzihao/schemcp@0.1.0` is published on npm and can be started directly with the `npx` command below. Treat the [official npm page](https://www.npmjs.com/package/@yuanzihao/schemcp) as the source of truth for versions and integrity metadata.
+> The currently published stable npm version remains `@yuanzihao/schemcp@0.1.0`. Repository version `0.2.0` remains an RC candidate until Windows x64 real-host acceptance and explicit publication authorization are complete. Treat the [official npm page](https://www.npmjs.com/package/@yuanzihao/schemcp) as the source of truth for published versions and integrity metadata.
 
 ## Why SchemCP
 
@@ -36,6 +36,8 @@ License: Apache-2.0
 - **Complete logical-component pins**: merge multi-unit symbols and separated power units by schematic, designator, Symbol, and `PART`; missing, duplicate, or incomplete source data returns `PARTIAL/UNKNOWN`, while explicitly hidden pins remain visible to queries.
 - **Versioned component semantics**: `schemcp.semantic-rules/1` deterministically emits MCU/MPU, power, memory, transceiver, connector, protection/filter, and other role candidates plus page-scoped power-domain candidates; every result retains its rule, evidence, and `CANDIDATE/UNRESOLVED` boundary.
 - **Connection-backed interface candidates**: `list_interfaces` recognizes SWD/JTAG, UART, I²C, SPI/QSPI, CAN, USB, Ethernet, SDIO, I²S/SAI, analog, and GPIO interfaces. Unconnected alternate-function names do not create interfaces, missing signals remain `PARTIAL_CANDIDATE`, and DNP evidence is excluded by default but remains queryable.
+- **Complete P2 resource model**: explicit `IrResourceNode/IrResourceEdge` records back `get_power_tree`, `get_clock_tree`, `get_reset_boot_paths`, and `get_mcu_pin_usage`, covering power conversion/switch candidates, external clock sources/buffers, reset supervisors/external controls/manual reset, boot straps, and MCU pins. Results are bounded, paginated, provenance-bearing, and carry stable unresolved reasons without inferring internal PLLs, firmware configuration, or connectivity through ordinary components.
+- **Conservative MCU-pin states**: every pin reports `USED/EXPLICIT_NC/UNUSED/UNKNOWN/DNP_COMPONENT` plus its finer netlist/candidate basis, power domains, interfaces, and external resource roles. Confirmed unused status still requires a complete multi-unit/hidden-pin model, the base Variant, a populated component, and either explicit project NC or an empty net in a bound `.enet`.
 - **Optional `.enet` evidence**: bind a netlist to one project when exact pin-to-net endpoint comparison is needed.
 - **Explicit truth boundaries**: project facts, part facts, and engineering inferences remain distinguishable.
 - **Read-only and bounded**: tools use pagination, stable error codes, and input limits; SchemCP does not edit schematics or generate firmware.
@@ -48,7 +50,7 @@ SchemCP is an independent community project and is not affiliated with, authoriz
 
 ### Operating systems
 
-| Platform | 0.1.0 status | Release gate |
+| Platform | 0.2.0 RC status | Release gate |
 | --- | --- | --- |
 | Linux x64 | Supported | Full tests, coverage, two deterministic packs, offline install, and MCP protocol acceptance |
 | macOS arm64/x64 | Supported | Full tests, two deterministic packs, offline install, and MCP protocol acceptance |
@@ -58,12 +60,13 @@ Linux and macOS enforce private `0700/0600` directory and file modes. Windows do
 
 ### Input formats and capabilities
 
-| Capability | 0.1.0 status |
+| Capability | 0.2.0 RC status |
 | --- | --- |
 | Offline JLCEDA Pro `.epro2` schematic parsing | Supported |
 | Project-scoped user-provided `.enet` binding | Supported; authenticity and project binding remain unverified |
 | Component, pin, explicit net-label, and geometric-candidate queries | Supported |
 | Component roles, power domains, and connection-backed interface candidates | Supported as deterministic inferences with unverified electrical truth |
+| Power tree, external clock tree, reset/boot paths, and MCU pin resources | Supported as bounded candidates with unverified electrical truth |
 | User-confirmed multi-project connector mappings | Supported |
 | Altium, KiCad, OrCAD, and other EDA schematic formats | Not supported and not planned; import into JLCEDA Pro, verify the conversion, and export `.epro2` first |
 | PCB, online Bridge, plugin APIs, project mutation, and code generation | Not supported |
@@ -91,6 +94,15 @@ The explicit MCP form is also supported:
 ```bash
 npx -y @yuanzihao/schemcp mcp
 ```
+
+## Migrating from 0.1.x to 0.2.0
+
+- Regenerate EDA-IR and Context Pack outputs after upgrading. EDA-IR moves from 1.0.0 to 1.1.0 and Context Pack moves from 1.0.0 to 1.1.0; do not mix old artifacts with 0.2.0 query results.
+- Restart the MCP client and refresh `tools/list`. The public read-only surface grows from 48 to 54 tools with BUS, interface, and four P2 resource queries.
+- Discard saved pagination cursors. Cursors are bound to the project, occurrence, Variant, filters, and semantic-rule version and are not portable across versions.
+- Update MCU-pin consumers to use the goal-level `USED/EXPLICIT_NC/UNUSED/UNKNOWN/DNP_COMPONENT` state while retaining the finer `usageStatus` as evidence. A 0.1.x “no wire” observation must never be migrated into `UNUSED`.
+- Regenerate every private real-project acceptance manifest. The 0.2.0 manifest contract is 1.5.0; old baselines must not be auto-upgraded or auto-accepted and require manual review against real JLCEDA Pro exports.
+- `0.2.0` remains an RC candidate. Wait for explicit publication authorization and confirmation of the public package version before using a production npm upgrade command.
 
 ## Client setup
 
@@ -264,14 +276,14 @@ Build and install a local tarball:
 
 ```bash
 npm pack
-npm install --global ./yuanzihao-schemcp-0.1.0.tgz
+npm install --global ./yuanzihao-schemcp-0.2.0.tgz
 schemcp
 ```
 
 ## Documentation and security
 
 - [MCP service reference](docs/MCP_SERVICE.md)
-- [50 MCP tools and JSON Schemas](docs/MCP_TOOLS.md)
+- [54 MCP tools and JSON Schemas](docs/MCP_TOOLS.md)
 - [User guide](docs/USER_GUIDE.md)
 - [Contributing](CONTRIBUTING.md)
 - [Security policy](SECURITY.md)

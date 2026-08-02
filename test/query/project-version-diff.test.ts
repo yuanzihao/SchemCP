@@ -6,6 +6,7 @@ import type {
   IrComponentSemantic,
   IrInterface,
   IrRecordProvenance,
+  IrResourceEdge,
   IrSchematicAnnotation,
   IrSchematicTable,
   IrSymbolText,
@@ -138,6 +139,48 @@ function interfaceCandidate(
     ruleId: "interface.swd.signal-set.v1",
     evidenceClass: "DETERMINISTIC_RULE",
     truthStatus: status === "UNRESOLVED" ? "UNRESOLVED" : "CANDIDATE",
+    semanticRuleSetVersion: "schemcp.semantic-rules/1",
+    provenance: [PROVENANCE]
+  };
+}
+
+function resourceEdge(
+  id: string,
+  status: IrResourceEdge["status"]
+): IrResourceEdge {
+  return {
+    id,
+    resourceType: "POWER",
+    kind: "POWER_CONVERSION",
+    direction: "DIRECTED",
+    from: {
+      kind: "NET",
+      id: "net-vin",
+      pageId: "page-a",
+      netName: "VIN"
+    },
+    to: {
+      kind: "NET",
+      id: "net-vout",
+      pageId: "page-a",
+      netName: "VOUT"
+    },
+    viaComponentRefs: [
+      {
+        componentId: "component-a",
+        pageId: "page-a",
+        logicalComponentId: "logical-component-a"
+      }
+    ],
+    pinInstanceIds: ["pin-in", "pin-out"],
+    activityStatus: "ACTIVE",
+    isolationStatus: "NOT_INDICATED",
+    status,
+    unresolvedReasons:
+      status === "UNRESOLVED" ? ["PIN_COMPLETENESS_NOT_COMPLETE"] : [],
+    ruleId: "resource.power.ldo-conversion.v1",
+    evidenceClass: "DETERMINISTIC_RULE",
+    truthStatus: status === "CANDIDATE" ? "CANDIDATE" : "UNRESOLVED",
     semanticRuleSetVersion: "schemcp.semantic-rules/1",
     provenance: [PROVENANCE]
   };
@@ -306,6 +349,7 @@ function ir(
     readonly symbolTexts?: readonly IrSymbolText[];
     readonly componentSemantics?: readonly IrComponentSemantic[];
     readonly interfaces?: readonly IrInterface[];
+    readonly resourceEdges?: readonly IrResourceEdge[];
     readonly irSha256?: string;
     readonly archiveSha256?: string;
   } = {}
@@ -317,12 +361,13 @@ function ir(
   const symbolTexts = options.symbolTexts ?? [];
   const componentSemantics = options.componentSemantics ?? [];
   const interfaces = options.interfaces ?? [];
+  const resourceEdges = options.resourceEdges ?? [];
   return {
     schema: "schemcp.eda-ir",
     schemaVersion: "1.1.0",
     generator: {
       name: "@yuanzihao/schemcp",
-      version: "0.1.0"
+      version: "0.2.0"
     },
     source: {
       format: "EASYEDA_V3_LOG",
@@ -345,6 +390,14 @@ function ir(
     components,
     componentSemantics,
     interfaces,
+    resourceNodes: [
+      ...new Map(
+        resourceEdges
+          .flatMap((item) => [item.from, item.to])
+          .map((item) => [item.id, item])
+      ).values()
+    ],
+    resourceEdges,
     symbols: [],
     symbolParts: [],
     symbolTexts,
@@ -462,24 +515,30 @@ test("同一实体新增可选字段时显式报告字段变化", () => {
   assert.deepEqual(changes.items[0]?.changedFields, ["deviceId"]);
 });
 
-test("工程差异覆盖组件语义和接口候选", () => {
+test("工程差异覆盖组件语义、接口候选和资源边", () => {
   const baselineSemantic = componentSemantic("component-a", "UNKNOWN");
   const currentSemantic = componentSemantic("component-a", "MCU_MPU");
   const baselineInterface = interfaceCandidate("interface-a", "PARTIAL_CANDIDATE");
   const currentInterface = interfaceCandidate("interface-a", "CANDIDATE");
+  const baselineResource = resourceEdge("resource-a", "UNRESOLVED");
+  const currentResource = resourceEdge("resource-a", "CANDIDATE");
   const index = new ProjectVersionDiffIndex(
     ir({
       componentSemantics: [baselineSemantic],
-      interfaces: [baselineInterface]
+      interfaces: [baselineInterface],
+      resourceEdges: [baselineResource]
     }),
     ir({
       componentSemantics: [currentSemantic],
       interfaces: [currentInterface],
+      resourceEdges: [currentResource],
       irSha256: "d".repeat(64)
     })
   );
   assert.equal(index.summary.byEntityKind.COMPONENT_SEMANTIC.modified, 1);
   assert.equal(index.summary.byEntityKind.INTERFACE.modified, 1);
+  assert.equal(index.summary.byEntityKind.RESOURCE_NODE.unchanged, 2);
+  assert.equal(index.summary.byEntityKind.RESOURCE_EDGE.modified, 1);
   assert.deepEqual(
     index.listChanges({ entityKind: "COMPONENT_SEMANTIC" }).items[0]
       ?.changedFields,
@@ -488,6 +547,10 @@ test("工程差异覆盖组件语义和接口候选", () => {
   assert.deepEqual(
     index.listChanges({ entityKind: "INTERFACE" }).items[0]?.changedFields,
     ["missingSignals", "status"]
+  );
+  assert.deepEqual(
+    index.listChanges({ entityKind: "RESOURCE_EDGE" }).items[0]?.changedFields,
+    ["status", "truthStatus", "unresolvedReasons"]
   );
 });
 

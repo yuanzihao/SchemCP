@@ -450,7 +450,7 @@ function fixture(): EdaIr {
     schemaVersion: "1.1.0",
     generator: {
       name: "@yuanzihao/schemcp",
-      version: "0.1.0"
+      version: "0.2.0"
     },
     source: {
       format: "EASYEDA_V3_LOG",
@@ -473,6 +473,8 @@ function fixture(): EdaIr {
     components,
     componentSemantics: [],
     interfaces: [],
+    resourceNodes: [],
+    resourceEdges: [],
     symbols,
     symbolParts: [],
     symbolTexts: [],
@@ -568,6 +570,15 @@ function fixture(): EdaIr {
       interfacesActive: 0,
       interfacesExcludedDnp: 0,
       interfacesAssemblyUnknown: 0,
+      resourceNodes: 0,
+      resourceEdges: 0,
+      resourceEdgesPower: 0,
+      resourceEdgesClock: 0,
+      resourceEdgesResetBoot: 0,
+      resourceEdgesMcuPin: 0,
+      resourceEdgesActive: 0,
+      resourceEdgesExcludedDnp: 0,
+      resourceEdgesAssemblyUnknown: 0,
       componentsWithDesignator: components.length,
       componentsWithDevice: 0,
       componentsWithSymbol: components.length,

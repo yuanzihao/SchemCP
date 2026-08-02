@@ -12,6 +12,10 @@ import {
   QUERY_LIMITS
 } from "../query/index.js";
 import { ComponentConnectivityQuery } from "../query/component-connectivity.js";
+import {
+  ResourceGraphQueryIndex,
+  RESOURCE_GRAPH_LIMITS
+} from "../query/resource-graph.js";
 import type { NetlistComparisonQueryIndex } from "../query/netlist-comparison-index.js";
 import { UNRESOLVED_COMPONENT_REASONS } from "../query/unresolved-components.js";
 import {
@@ -63,6 +67,53 @@ const PAGE_INPUT = {
     .min(1)
     .optional()
     .describe("上一页返回的不透明 nextCursor；改变筛选条件后不可复用")
+} as const;
+
+const RESOURCE_GRAPH_INPUT = {
+  pageId: z
+    .string()
+    .min(1)
+    .max(QUERY_LIMITS.maxTextLength)
+    .optional()
+    .describe("可选精确原理图页 ID"),
+  rootNodeId: z
+    .string()
+    .min(1)
+    .max(QUERY_LIMITS.maxTextLength)
+    .optional()
+    .describe("可选资源图节点 ID；来自前一次查询的 roots 或边端点"),
+  rootNetName: z
+    .string()
+    .min(1)
+    .max(QUERY_LIMITS.maxTextLength)
+    .optional()
+    .describe("可选精确根网络名；同名跨页时应同时提供 pageId"),
+  instanceContextId: z
+    .string()
+    .min(1)
+    .max(QUERY_LIMITS.maxTextLength)
+    .optional()
+    .describe("可选精确 INSTANCE 上下文 ID"),
+  variantId: z
+    .string()
+    .min(1)
+    .max(QUERY_LIMITS.maxTextLength)
+    .optional()
+    .describe("可选 Variant ID；当前未应用 Variant 时资源边保守降级为未解析"),
+  activityStatus: z
+    .enum(["ACTIVE", "EXCLUDED_DNP", "ASSEMBLY_UNKNOWN", "ALL"])
+    .optional()
+    .describe("装配活动筛选；默认 ACTIVE，ALL 包含 DNP 与装配未知证据"),
+  maxDepth: z
+    .number()
+    .int()
+    .min(0)
+    .max(RESOURCE_GRAPH_LIMITS.maxDepth)
+    .optional()
+    .describe(
+      `图遍历深度，默认 ${RESOURCE_GRAPH_LIMITS.defaultDepth}，最大 ${RESOURCE_GRAPH_LIMITS.maxDepth}`
+    ),
+  ...PAGE_INPUT
 } as const;
 
 const COMPONENT_SELECTOR = {
@@ -274,6 +325,7 @@ export function createEdaMcpServer(
       datasheets
     );
   };
+  const resourceGraph = () => new ResourceGraphQueryIndex(index.ir);
   const server = new McpServer(
     {
       name: MCP_SERVER_NAME,
@@ -796,6 +848,14 @@ export function createEdaMcpServer(
             "AVAILABLE_PAGE_SCOPED_EXPLICIT_PIN_NET_CANDIDATES",
           interfaceCandidates:
             "AVAILABLE_VERSIONED_SIGNAL_SET_RULES_DNP_EXCLUDED_BY_DEFAULT",
+          powerTreeCandidates:
+            "AVAILABLE_BOUNDED_EXPLICIT_ROLE_EDGES_NOT_VERIFIED",
+          externalClockTreeCandidates:
+            "AVAILABLE_EXTERNAL_SCHEMATIC_ONLY_INTERNAL_PLL_NOT_INFERRED",
+          resetBootPathCandidates:
+            "AVAILABLE_BOUNDED_EXTERNAL_PATHS_NOT_VERIFIED",
+          mcuPinUsage:
+            "AVAILABLE_UNUSED_ONLY_WITH_COMPLETE_MODEL_AND_EXPLICIT_EVIDENCE",
           variantInstanceContextMatching: "AVAILABLE_EXACT_ID_ONLY",
           variantOverrideApplication:
             "NOT_AVAILABLE_SELECTED_VARIANT_RETURNS_UNKNOWN_ASSEMBLY",
@@ -1878,6 +1938,100 @@ export function createEdaMcpServer(
         semanticRuleSetVersion: "schemcp.semantic-rules/1",
         page: index.listInterfaces(args)
       }))
+  );
+
+  server.registerTool(
+    "get_power_tree",
+    {
+      title: "获取有界电源树候选",
+      description:
+        "沿页作用域显式电源网络、明确 POWER_INPUT/LDO/DC-DC 角色和带证据的电源开关、保护或滤波候选传输边进行有界遍历。不会穿过普通器件猜测连通，支持多个根、环路和 DNP/实例/Variant 作用域。",
+      inputSchema: RESOURCE_GRAPH_INPUT,
+      annotations: READ_ONLY_ANNOTATIONS
+    },
+    (args) => runQuery(() => ({ ...resourceGraph().query("POWER", args) }))
+  );
+
+  server.registerTool(
+    "get_clock_tree",
+    {
+      title: "获取外部时钟树候选",
+      description:
+        "只沿原理图中外部晶振/振荡器、显式身份的时钟缓冲候选和 MCU 外部时钟输入网络进行有界查询；不推断 MCU 内部 PLL、内部时钟树或固件配置。",
+      inputSchema: RESOURCE_GRAPH_INPUT,
+      annotations: READ_ONLY_ANNOTATIONS
+    },
+    (args) => runQuery(() => ({ ...resourceGraph().query("CLOCK", args) }))
+  );
+
+  server.registerTool(
+    "get_reset_boot_paths",
+    {
+      title: "获取复位与启动绑带路径候选",
+      description:
+        "查询显式 RESET/RST/BOOT/STRAP 网络上的监督器、连接器外部控制、手动复位、MCU 输入和可证明的无源上下拉候选。只返回原理图外部路径，不推断芯片内部启动逻辑或固件行为。",
+      inputSchema: RESOURCE_GRAPH_INPUT,
+      annotations: READ_ONLY_ANNOTATIONS
+    },
+    (args) =>
+      runQuery(() => ({ ...resourceGraph().query("RESET_BOOT", args) }))
+  );
+
+  server.registerTool(
+    "get_mcu_pin_usage",
+    {
+      title: "获取 MCU 引脚使用状态",
+      description:
+        "分页返回全部 MCU_MPU 角色候选的完整多单元引脚，以及 USED/EXPLICIT_NC/UNUSED/UNKNOWN/DNP_COMPONENT 状态、细分网表或候选依据、电源域、接口、外部资源角色和稳定未解析原因。只有引脚模型 COMPLETE、基础 Variant、器件已装配，且工程显式 NC 或已绑定 .enet 明确空网络时才确认未使用；其余未连接表象保持 UNKNOWN。",
+      inputSchema: {
+        componentId: z
+          .string()
+          .min(1)
+          .max(QUERY_LIMITS.maxTextLength)
+          .optional()
+          .describe("可选精确 MCU 组件 ID"),
+        designator: z
+          .string()
+          .min(1)
+          .max(QUERY_LIMITS.maxTextLength)
+          .optional()
+          .describe("可选精确 MCU 位号；歧义时需补 pageId"),
+        pageId: z
+          .string()
+          .min(1)
+          .max(QUERY_LIMITS.maxTextLength)
+          .optional()
+          .describe("可选精确原理图页 ID"),
+        instanceContextId: z
+          .string()
+          .min(1)
+          .max(QUERY_LIMITS.maxTextLength)
+          .optional()
+          .describe("可选精确 INSTANCE 上下文 ID"),
+        variantId: z
+          .string()
+          .min(1)
+          .max(QUERY_LIMITS.maxTextLength)
+          .optional()
+          .describe("可选 Variant ID；当前未应用 Variant 时不得确认未使用"),
+        status: z
+          .enum(["USED", "EXPLICIT_NC", "UNUSED", "UNKNOWN", "DNP_COMPONENT"])
+          .optional()
+          .describe("可选目标级 MCU 引脚资源状态"),
+        usageStatus: z
+          .enum([
+            "USED_BOUND_NETLIST",
+            "USED_CANDIDATE",
+            "UNUSED_CONFIRMED",
+            "UNKNOWN"
+          ])
+          .optional(),
+        ...PAGE_INPUT
+      },
+      annotations: READ_ONLY_ANNOTATIONS
+    },
+    (args) =>
+      runQuery(() => ({ ...componentConnectivity().getMcuPinUsage(args) }))
   );
 
   server.registerTool(

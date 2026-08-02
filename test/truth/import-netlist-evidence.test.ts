@@ -94,7 +94,7 @@ test("用户提供的 .enet 以未验证来源和工程绑定状态私密归档"
     readonly evidenceSha256: string;
   };
   assert.equal(manifest.schemaVersion, "0.1.0");
-    assert.equal(manifest.generator.version, "0.1.0");
+    assert.equal(manifest.generator.version, "0.2.0");
   assert.equal(manifest.sourceProject.archiveSha256, result.archiveSha256);
   assert.equal(manifest.sourceProject.irSha256, result.irSha256);
   assert.equal(manifest.acquisition.method, "USER_PROVIDED_FILE");

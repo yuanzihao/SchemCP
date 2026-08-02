@@ -19,7 +19,7 @@ test("装配清单可规范生成、独立校验并拒绝哈希篡改", async ()
     schemaVersion: "1.0.0",
     generator: {
       name: "@yuanzihao/schemcp",
-      version: "0.1.0"
+      version: "0.2.0"
     },
     projects: [
       { projectId: projectIdForIr(firstHash), irSha256: firstHash },

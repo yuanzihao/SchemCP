@@ -335,6 +335,15 @@ test("将原理图、符号、引脚、器件和显式导线编译为可追溯 E
     interfacesActive: 0,
     interfacesExcludedDnp: 0,
     interfacesAssemblyUnknown: 0,
+    resourceNodes: 0,
+    resourceEdges: 0,
+    resourceEdgesPower: 0,
+    resourceEdgesClock: 0,
+    resourceEdgesResetBoot: 0,
+    resourceEdgesMcuPin: 0,
+    resourceEdgesActive: 0,
+    resourceEdgesExcludedDnp: 0,
+    resourceEdgesAssemblyUnknown: 0,
     componentsWithDesignator: 1,
     componentsWithDevice: 1,
     componentsWithSymbol: 1,
@@ -598,7 +607,7 @@ test("原理图页 TEXT 只保留显式内容与原始位置，不执行语义�
 
   const ir = compileV3ToEdaIr(reducer, ARCHIVE_SHA);
   assert.equal(ir.schemaVersion, "1.1.0");
-  assert.equal(ir.generator.version, "0.1.0");
+  assert.equal(ir.generator.version, "0.2.0");
   assert.equal(ir.summary.schematicAnnotations, 2);
   assert.equal(ir.summary.schematicAnnotationsWithExplicitText, 1);
   assert.equal(ir.summary.schematicAnnotationsWithExplicitEmpty, 1);
@@ -688,7 +697,7 @@ test("符号 TEXT 保留显式内容并严格绑定同文档 PART", () => {
 
   const ir = compileV3ToEdaIr(reducer, ARCHIVE_SHA);
   assert.equal(ir.schemaVersion, "1.1.0");
-  assert.equal(ir.generator.version, "0.1.0");
+  assert.equal(ir.generator.version, "0.2.0");
   assert.equal(ir.summary.symbolTexts, 3);
   assert.equal(ir.summary.symbolTextsWithExplicitText, 2);
   assert.equal(ir.summary.symbolTextsWithExplicitEmpty, 1);
@@ -1562,7 +1571,7 @@ test("编译 SCH_PAGE/SYMBOL 五类显式图形并兼容两种 POLY 点编码", 
 
   const ir = compileV3ToEdaIr(reducer, ARCHIVE_SHA);
   assert.equal(ir.schemaVersion, "1.1.0");
-  assert.equal(ir.generator.version, "0.1.0");
+  assert.equal(ir.generator.version, "0.2.0");
   assert.equal(ir.summary.schematicGraphicPrimitives, 7);
   assert.equal(ir.summary.schematicGraphicPrimitivesInPages, 3);
   assert.equal(ir.summary.schematicGraphicPrimitivesInSymbols, 4);

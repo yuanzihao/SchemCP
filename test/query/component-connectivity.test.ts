@@ -54,7 +54,7 @@ function pin(
   return [
     record(
       { type: "PIN", id, ticket },
-      { partId: "part-a", x: 0, y, length: 10, rotation: 0 }
+      { partId: "part-a", x: 0, y, length: 10, rotation: 0, display: true }
     ),
     ...(number === undefined
       ? []
@@ -112,6 +112,10 @@ const PROJECT_LOG = [
     { title: "Main", schematic: "schematic-a" }
   ),
   ...component("component-u1", "U1", 10, 20, 10),
+  record(
+    { type: "ATTR", id: "component-u1-assembly", ticket: 19 },
+    { parentId: "component-u1", key: "Add into BOM", value: "yes" }
+  ),
   ...component("component-r1", "R1", 20, 20, 20),
   ...component("component-x2", "X2", 40, 20, 30),
   ...component("component-anonymous", undefined, 60, 20, 40),
@@ -123,7 +127,10 @@ const PROJECT_LOG = [
     { type: "DOCHEAD", ticket: 100 },
     { docType: "SYMBOL", client: "test", uuid: "symbol-a" }
   ),
-  record({ type: "META", ticket: 101 }, { title: "Connectivity Symbol" }),
+  record(
+    { type: "META", ticket: 101 },
+    { title: "STM32 Microcontroller Connectivity Symbol" }
+  ),
   record({ type: "PART", id: "part-a", ticket: 102 }, { title: "A" }),
   ...pin("pin-1", "1", 0, 110),
   ...pin("pin-2", "2", 10, 120),
@@ -362,5 +369,118 @@ test("直接连接查询只返回同一网络端点并隔离筛选游标", async
   assert.equal(
     candidateQuery.listDirectConnections({ designator: "UNKNOWN" }).status,
     "NOT_FOUND"
+  );
+});
+
+test("MCU 引脚只有在完整模型和显式 NC 或绑定空网络下确认未使用", async () => {
+  const { index, comparison } = await fixture();
+  const candidate = new ComponentConnectivityQuery(index).getMcuPinUsage({
+    designator: "U1",
+    limit: 50
+  });
+  assert.equal(candidate.mcuCount, 1);
+  assert.equal(candidate.netlistBinding, "NOT_BOUND");
+  assert.equal(
+    candidate.pins.items.find((item) => item.pin.number === "2")?.usageStatus,
+    "UNKNOWN"
+  );
+  assert.equal(
+    candidate.pins.items.find((item) => item.pin.number === "2")?.status,
+    "UNKNOWN"
+  );
+  assert.deepEqual(
+    candidate.pins.items.find((item) => item.pin.number === "2")
+      ?.unresolvedReasons,
+    ["NETLIST_NOT_ATTACHED", "NO_EXPLICIT_CONNECTION_EVIDENCE"]
+  );
+  assert.equal(
+    candidate.pins.items.find((item) => item.pin.number === "1")?.usageStatus,
+    "USED_CANDIDATE"
+  );
+  const candidateUsed = candidate.pins.items.find(
+    (item) => item.pin.number === "1"
+  );
+  assert.equal(candidateUsed?.status, "USED");
+  assert.ok(candidateUsed?.powerDomains.length);
+  assert.equal(
+    candidateUsed?.resourceRoles.some(
+      (item) =>
+        item.resourceType === "MCU_PIN" && item.kind === "MCU_PIN_CONNECTION"
+    ),
+    true
+  );
+
+  const bound = new ComponentConnectivityQuery(
+    index,
+    comparison
+  ).getMcuPinUsage({ designator: "U1", limit: 50 });
+  assert.equal(bound.netlistBinding, "BOUND");
+  const byNumber = new Map(
+    bound.pins.items.map((item) => [item.pin.number, item])
+  );
+  assert.equal(byNumber.get("1")?.usageStatus, "USED_BOUND_NETLIST");
+  assert.equal(byNumber.get("1")?.status, "USED");
+  assert.equal(byNumber.get("1")?.evidenceClass, "USER_BOUND_NETLIST");
+  assert.equal(byNumber.get("2")?.usageStatus, "UNUSED_CONFIRMED");
+  assert.equal(byNumber.get("2")?.status, "UNUSED");
+  assert.equal(
+    byNumber.get("2")?.usageBasis,
+    "USER_BOUND_NETLIST_UNCONNECTED"
+  );
+  assert.equal(byNumber.get("2")?.truthStatus, "NOT_VERIFIED");
+  const unused = new ComponentConnectivityQuery(
+    index,
+    comparison
+  ).getMcuPinUsage({
+    designator: "U1",
+    usageStatus: "UNUSED_CONFIRMED",
+    limit: 1
+  });
+  assert.equal(unused.pins.total, 1);
+  assert.equal(
+    new ComponentConnectivityQuery(index, comparison).getMcuPinUsage({
+      designator: "U1",
+      status: "UNUSED",
+      limit: 50
+    }).pins.total,
+    1
+  );
+
+  const dnpIr = {
+    ...index.ir,
+    components: index.ir.components.map((item) =>
+      item.designator === "U1"
+        ? {
+            ...item,
+            assembly: {
+              ...item.assembly,
+              status: "DNP" as const,
+              reason: "EXPLICIT_ADD_INTO_BOM_NO" as const,
+              values: ["no"]
+            }
+          }
+        : item
+    )
+  };
+  const dnp = new ComponentConnectivityQuery(
+    new EdaIrQueryIndex(dnpIr)
+  ).getMcuPinUsage({ designator: "U1", status: "DNP_COMPONENT", limit: 50 });
+  assert.equal(dnp.pins.total, candidate.pins.total);
+  assert.equal(
+    dnp.pins.items.every(
+      (item) =>
+        item.status === "DNP_COMPONENT" && item.usageStatus === "UNKNOWN"
+    ),
+    true
+  );
+  assert.throws(
+    () =>
+      new ComponentConnectivityQuery(index, comparison).getMcuPinUsage({
+        designator: "U1",
+        usageStatus: "USED_BOUND_NETLIST",
+        cursor: unused.pins.nextCursor ?? "invalid"
+      }),
+    (error: unknown) =>
+      error instanceof QueryError && error.code === "QUERY_INVALID_CURSOR"
   );
 });

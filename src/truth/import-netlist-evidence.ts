@@ -42,7 +42,7 @@ interface ImportedNetlistEvidenceManifest {
   readonly schemaVersion: "0.1.0";
   readonly generator: {
     readonly name: "@yuanzihao/schemcp";
-    readonly version: "0.1.0";
+    readonly version: "0.2.0";
   };
   readonly sourceProject: {
     readonly archiveSha256: string;
@@ -196,7 +196,7 @@ function createManifest(
     schemaVersion: "0.1.0" as const,
     generator: {
       name: "@yuanzihao/schemcp" as const,
-      version: "0.1.0" as const
+      version: "0.2.0" as const
     },
     sourceProject: {
       archiveSha256: ir.source.archiveSha256,

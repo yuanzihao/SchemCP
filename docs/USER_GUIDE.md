@@ -11,9 +11,21 @@ npx -y @yuanzihao/schemcp
 本地安装包：
 
 ```bash
-npm install --global ./yuanzihao-schemcp-0.1.0.tgz
+npm install --global ./yuanzihao-schemcp-0.2.0.tgz
 schemcp --version
 ```
+
+### 从 0.1.x 升级
+
+升级到 0.2.0 后必须完成以下迁移动作：
+
+1. 删除并重新生成旧的 EDA-IR 与 Context Pack；两个公共 Schema 均已升级到 1.1.0。
+2. 重新启动 MCP 进程并确认 `tools/list` 恰好返回 54 个只读工具；不要复用旧进程缓存的 48 工具契约。
+3. 丢弃旧分页游标。0.2.0 游标包含工程、层级实例、Variant、筛选条件和语义规则版本作用域。
+4. MCU 引脚调用方改用 `status=USED/EXPLICIT_NC/UNUSED/UNKNOWN/DNP_COMPONENT` 做目标级判断，并保留 `usageStatus`、证据和未解析原因用于审计。
+5. 私有真实工程验收清单按 1.5.0 契约重新生成并人工核对。禁止自动接受旧基线差异，也禁止把私有工程、路径、UUID、网络名或位号清单提交到仓库。
+
+仓库中的 0.2.0 仍是 RC。正式发布前不要把 `npx -y @yuanzihao/schemcp` 视为已经指向 0.2.0，应先核对 npm 官方公开版本。
 
 ### 支持的工程格式
 
@@ -89,12 +101,18 @@ SchemCP 默认无工程启动。用户在对话中附加 `.epro2` 后，让模�
 5. `get_component` 与 `get_component_pins`
 6. `list_interfaces`
 7. `get_component_pin_connectivity`
+8. `get_power_tree`、`get_clock_tree`、`get_reset_boot_paths`
+9. `get_mcu_pin_usage`
 
 `list_components` 可以使用 `assemblyStatus` 筛选 `POPULATED`、`DNP` 或 `UNKNOWN`，并使用 `pinCompletenessStatus` 筛选 `COMPLETE`、`PARTIAL` 或 `UNKNOWN`。`DNP` 只来自有效 `Add into BOM=no`；缺失、冲突、非法值或指定了尚未应用的 Variant 时都不会被猜成 DNP。
 
 `get_component_pins` 在逻辑器件完整性可证明时合并同位号多 `PART` 单元，包括分离电源单元。`display=false` 的引脚仍会返回；若 `display` 来源缺失、多单元缺失或同位号存在歧义，完整性会降级，调用方不得据此断言某个 MCU 引脚“未使用”。
 
 组件结果中的 `semantic` 是 `schemcp.semantic-rules/1` 产生的角色与页内电源域候选，必须结合 `evidenceClass`、`truthStatus`、`ruleId` 和来源理解。`list_interfaces` 只把实际接触导线的引脚纳入识别：未接线的 MCU 复用功能名不会被当成已使用接口；缺少必要信号时返回 `PARTIAL_CANDIDATE`，导线没有显式网络或存在冲突时返回 `UNRESOLVED`。默认只列出 `ACTIVE` 接口，DNP 排除证据需显式使用 `activityStatus=EXCLUDED_DNP` 查询。
+
+P2 资源图只返回原理图外部、有证据的候选。电源树不会穿过普通器件推断连通；时钟树不包含 MCU 内部 PLL/时钟树或固件配置；复位/启动查询不推断芯片内部启动逻辑。图深度最大 8，每页最大 50 项。
+
+`get_mcu_pin_usage` 为每个引脚返回 `USED/EXPLICIT_NC/UNUSED/UNKNOWN/DNP_COMPONENT`，并附带细分连接依据、电源域、接口、外部时钟/复位/启动角色和稳定未解析原因。`EXPLICIT_NC/UNUSED` 不是“看起来没画线”就成立：必须同时满足基础 Variant、器件 `POPULATED`、多单元与隐藏引脚模型 `COMPLETE`，并分别存在工程显式 NC 或绑定 `.enet` 空网络证据。任何条件不足都返回 `UNKNOWN`。
 
 ## 4. 何时提供 `.enet`
 
@@ -136,6 +154,6 @@ schemcp verify-datasheet-store ./private-datasheets
 - 相对路径被拒绝：必须使用客户端提供的绝对附件路径。
 - 重复位号歧义：增加页面 ID 或组件 ID。
 - 连接结论为候选：未绑定 `.enet`，或文件来源/工程绑定仍未验证。
-- 工具列表包含 PCB：当前客户端连接的不是 SchemCP 0.1.0 公共服务，应检查实际命令和旧进程。
+- 工具列表不是 54 个或包含 PCB：当前客户端连接的不是 SchemCP 0.2.0 公共服务，应检查实际命令和旧进程。
 
 详细工具契约见 [MCP_SERVICE.md](MCP_SERVICE.md)，真值说明见 [TRUTH_VALIDATION.md](TRUTH_VALIDATION.md)。

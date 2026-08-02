@@ -21,22 +21,31 @@ import type {
   EdaIrSummary,
   IrComponentRole,
   IrInterface,
-  IrInterfaceType
+  IrInterfaceType,
+  IrResourceEdgeKind,
+  IrResourceType
 } from "../ir/model.js";
+import { ComponentConnectivityQuery } from "../query/component-connectivity.js";
+import { EdaIrQueryIndex } from "../query/index.js";
+import { NetlistComparisonQueryIndex } from "../query/netlist-comparison-index.js";
 import { buildNetlistComparisonReport } from "../truth/compare-netlist-evidence.js";
 import { readPrivateNetlist } from "../truth/import-netlist-evidence.js";
+import { parseJlcEdaProEnet } from "../truth/jlceda-pro-enet.js";
 import {
   parseRealProjectManifest,
   REAL_PROJECT_COMPONENT_ROLES,
   REAL_PROJECT_INTERFACE_MATRIX_KEYS,
   REAL_PROJECT_INTERFACE_TYPES,
   REAL_PROJECT_MANIFEST_LIMITS,
+  REAL_PROJECT_RESOURCE_EDGE_KINDS,
+  REAL_PROJECT_RESOURCE_TYPES,
   type RealProjectAssemblyBaseline,
   type RealProjectBusBaseline,
   type RealProjectComparisonBaseline,
   type RealProjectHierarchyBaseline,
   type RealProjectInterfaceMatrix,
   type RealProjectSemanticBaseline,
+  type RealProjectResourceBaseline,
   type RealProjectSampleManifest
 } from "./real-project-manifest.js";
 
@@ -86,6 +95,7 @@ interface SampleReceipt {
   };
   readonly bus: RealProjectBusBaseline;
   readonly semantics: RealProjectSemanticBaseline;
+  readonly resources: RealProjectResourceBaseline;
   readonly comparison: {
     readonly status: string;
     readonly candidateTupleCount: number;
@@ -371,6 +381,132 @@ function semanticEvidence(
   return actual;
 }
 
+function resourceEvidence(
+  ir: EdaIr,
+  report: ReturnType<typeof buildNetlistComparisonReport>,
+  parsedNetlist: ReturnType<typeof parseJlcEdaProEnet>,
+  baseline: RealProjectResourceBaseline,
+  sampleId: string
+): RealProjectResourceBaseline {
+  const byType = Object.fromEntries(
+    REAL_PROJECT_RESOURCE_TYPES.map((type) => [type, 0])
+  ) as Record<IrResourceType, number>;
+  const byKind = Object.fromEntries(
+    REAL_PROJECT_RESOURCE_EDGE_KINDS.map((kind) => [kind, 0])
+  ) as Record<IrResourceEdgeKind, number>;
+  const byStatus = { candidate: 0, unresolved: 0 };
+  const byActivity = { active: 0, excludedDnp: 0, assemblyUnknown: 0 };
+  for (const edge of ir.resourceEdges) {
+    byType[edge.resourceType] += 1;
+    byKind[edge.kind] += 1;
+    if (edge.status === "CANDIDATE") byStatus.candidate += 1;
+    else byStatus.unresolved += 1;
+    if (edge.activityStatus === "ACTIVE") byActivity.active += 1;
+    else if (edge.activityStatus === "EXCLUDED_DNP") byActivity.excludedDnp += 1;
+    else byActivity.assemblyUnknown += 1;
+  }
+  const connectivity = new ComponentConnectivityQuery(
+    new EdaIrQueryIndex(ir),
+    new NetlistComparisonQueryIndex(report, parsedNetlist)
+  );
+  const usageItems: {
+    readonly status: string;
+    readonly usageStatus: string;
+  }[] = [];
+  let cursor: string | undefined;
+  let mcuCount = 0;
+  let pinTotal = 0;
+  do {
+    const result = connectivity.getMcuPinUsage({
+      limit: 50,
+      ...(cursor === undefined ? {} : { cursor })
+    });
+    mcuCount = result.mcuCount;
+    pinTotal = result.pins.total;
+    usageItems.push(...result.pins.items);
+    cursor = result.pins.nextCursor;
+  } while (cursor !== undefined);
+  const actual: RealProjectResourceBaseline = {
+    resourceEdges: ir.resourceEdges.length,
+    byType,
+    byKind,
+    byStatus,
+    byActivity,
+    mcuPinUsage: {
+      mcuCount,
+      pins: pinTotal,
+      usedBoundNetlist: usageItems.filter(
+        (item) => item.usageStatus === "USED_BOUND_NETLIST"
+      ).length,
+      usedCandidate: usageItems.filter(
+        (item) => item.usageStatus === "USED_CANDIDATE"
+      ).length,
+      unusedConfirmed: usageItems.filter(
+        (item) => item.usageStatus === "UNUSED_CONFIRMED"
+      ).length,
+      unknown: usageItems.filter((item) => item.usageStatus === "UNKNOWN").length,
+      byResourceStatus: {
+        used: usageItems.filter((item) => item.status === "USED").length,
+        explicitNc: usageItems.filter((item) => item.status === "EXPLICIT_NC")
+          .length,
+        unused: usageItems.filter((item) => item.status === "UNUSED").length,
+        unknown: usageItems.filter((item) => item.status === "UNKNOWN").length,
+        dnpComponent: usageItems.filter(
+          (item) => item.status === "DNP_COMPONENT"
+        ).length
+      }
+    },
+    ...(baseline.requiredKinds === undefined
+      ? {}
+      : { requiredKinds: baseline.requiredKinds })
+  };
+  equalCount(
+    actual.resourceEdges,
+    baseline.resourceEdges,
+    `${sampleId}.resources.resourceEdges`
+  );
+  for (const type of REAL_PROJECT_RESOURCE_TYPES) {
+    equalCount(actual.byType[type], baseline.byType[type], `${sampleId}.resources.byType.${type}`);
+  }
+  for (const kind of REAL_PROJECT_RESOURCE_EDGE_KINDS) {
+    equalCount(actual.byKind[kind], baseline.byKind[kind], `${sampleId}.resources.byKind.${kind}`);
+  }
+  for (const key of ["candidate", "unresolved"] as const) {
+    equalCount(actual.byStatus[key], baseline.byStatus[key], `${sampleId}.resources.byStatus.${key}`);
+  }
+  for (const key of ["active", "excludedDnp", "assemblyUnknown"] as const) {
+    equalCount(actual.byActivity[key], baseline.byActivity[key], `${sampleId}.resources.byActivity.${key}`);
+  }
+  for (const key of [
+    "mcuCount",
+    "pins",
+    "usedBoundNetlist",
+    "usedCandidate",
+    "unusedConfirmed",
+    "unknown"
+  ] as const) {
+    equalCount(
+      actual.mcuPinUsage[key],
+      baseline.mcuPinUsage[key],
+      `${sampleId}.resources.mcuPinUsage.${key}`
+    );
+  }
+  for (const key of [
+    "used",
+    "explicitNc",
+    "unused",
+    "unknown",
+    "dnpComponent"
+  ] as const) {
+    equalCount(
+      actual.mcuPinUsage.byResourceStatus[key],
+      baseline.mcuPinUsage.byResourceStatus[key],
+      `${sampleId}.resources.mcuPinUsage.byResourceStatus.${key}`
+    );
+  }
+  return actual;
+}
+
 function verifyComparison(
   actual: SampleReceipt["comparison"],
   baseline: RealProjectComparisonBaseline,
@@ -433,7 +569,8 @@ async function verifySample(
   if (firstIr.source.archiveSha256 !== sample.sourceSha256) {
     fail("REAL_PROJECT_INPUT_CHANGED", `${sample.sampleId} 工程输入哈希变化`);
   }
-  const report = buildNetlistComparisonReport(firstIr, netlist.bytes);
+  const parsedNetlist = parseJlcEdaProEnet(netlist.bytes);
+  const report = buildNetlistComparisonReport(firstIr, netlist.bytes, parsedNetlist);
   if (report.netlist.sha256 !== sample.netlistSha256) {
     fail("REAL_PROJECT_INPUT_CHANGED", `${sample.sampleId} 网表输入哈希变化`);
   }
@@ -485,6 +622,13 @@ async function verifySample(
     semantics: semanticEvidence(
       firstIr,
       sample.semanticBaseline,
+      sample.sampleId
+    ),
+    resources: resourceEvidence(
+      firstIr,
+      report,
+      parsedNetlist,
+      sample.resourceBaseline,
       sample.sampleId
     ),
     comparison
@@ -565,6 +709,10 @@ function parsePackageReceipt(stdout: string): {
   readonly realAssemblyQuery: string;
   readonly realSemanticQuery: string;
   readonly realDnpInterfaceQuery: string;
+  readonly realPowerTreeQuery: string;
+  readonly realClockTreeQuery: string;
+  readonly realResetBootQuery: string;
+  readonly realMcuPinUsageQuery: string;
 } {
   const lines = stdout.trim().split(/\r?\n/u);
   const last = lines[lines.length - 1];
@@ -589,7 +737,11 @@ function parsePackageReceipt(stdout: string): {
     record.realSeparatedPowerUnitQuery !== "VERIFIED" ||
     record.realAssemblyQuery !== "VERIFIED" ||
     record.realSemanticQuery !== "VERIFIED" ||
-    record.realDnpInterfaceQuery !== "VERIFIED"
+    record.realDnpInterfaceQuery !== "VERIFIED" ||
+    record.realPowerTreeQuery !== "VERIFIED" ||
+    record.realClockTreeQuery !== "VERIFIED" ||
+    record.realResetBootQuery !== "VERIFIED" ||
+    record.realMcuPinUsageQuery !== "VERIFIED"
   ) {
     fail("REAL_PROJECT_PACKAGE_GATE_FAILED", "候选包真实层级调用未通过");
   }
@@ -602,7 +754,11 @@ function parsePackageReceipt(stdout: string): {
     realSeparatedPowerUnitQuery: record.realSeparatedPowerUnitQuery,
     realAssemblyQuery: record.realAssemblyQuery,
     realSemanticQuery: record.realSemanticQuery,
-    realDnpInterfaceQuery: record.realDnpInterfaceQuery
+    realDnpInterfaceQuery: record.realDnpInterfaceQuery,
+    realPowerTreeQuery: record.realPowerTreeQuery,
+    realClockTreeQuery: record.realClockTreeQuery,
+    realResetBootQuery: record.realResetBootQuery,
+    realMcuPinUsageQuery: record.realMcuPinUsageQuery
   };
 }
 
@@ -612,6 +768,9 @@ async function verifyInstalledPackage(
   assemblyProjectPath: string,
   semanticProjectPath: string,
   requiredMcuActiveInterfaceTypes: readonly IrInterfaceType[],
+  resourceProjectPath: string,
+  mcuPinProjectPath: string,
+  mcuPinNetlistPath: string,
   npmCache: string
 ): Promise<ReturnType<typeof parsePackageReceipt>> {
   try {
@@ -622,7 +781,10 @@ async function verifyInstalledPackage(
         projectPath,
         assemblyProjectPath,
         semanticProjectPath,
-        JSON.stringify(requiredMcuActiveInterfaceTypes)
+        JSON.stringify(requiredMcuActiveInterfaceTypes),
+        resourceProjectPath,
+        mcuPinProjectPath,
+        mcuPinNetlistPath
       ],
       {
         cwd: root,
@@ -729,6 +891,18 @@ async function main(): Promise<void> {
   ) {
     fail("REAL_PROJECT_MANIFEST_INVALID", "候选包语义验收样本缺失");
   }
+  const resourceAcceptance = manifest.samples.find(
+    (sample) => sample.sampleId === manifest.packageResourceAcceptanceSampleId
+  );
+  if (resourceAcceptance === undefined) {
+    fail("REAL_PROJECT_MANIFEST_INVALID", "候选包 P2 资源验收样本缺失");
+  }
+  const mcuPinAcceptance = manifest.samples.find(
+    (sample) => sample.sampleId === manifest.packageMcuPinAcceptanceSampleId
+  );
+  if (mcuPinAcceptance === undefined) {
+    fail("REAL_PROJECT_MANIFEST_INVALID", "候选包 MCU 引脚验收样本缺失");
+  }
   const temporaryRoot = await mkdtemp(
     path.join(tmpdir(), "schemcp-real-projects-")
   );
@@ -740,6 +914,9 @@ async function main(): Promise<void> {
       assemblyAcceptance.projectPath,
       semanticAcceptance.projectPath,
       requiredMcuActiveInterfaceTypes,
+      resourceAcceptance.projectPath,
+      mcuPinAcceptance.projectPath,
+      mcuPinAcceptance.netlistPath,
       path.join(temporaryRoot, "npm-cache")
     );
   } finally {
@@ -759,7 +936,7 @@ async function main(): Promise<void> {
       `${path.basename(manifestPath, ".json")}.receipt.json`
     );
   const receiptSha256 = await writeReceipt(receiptPath, {
-    schemaVersion: "1.3.0",
+    schemaVersion: "1.5.0",
     gate: "REAL_PROJECTS_VERIFIED",
     baselineId: manifest.baselineId,
     sourceSnapshotSha256,
@@ -800,6 +977,18 @@ async function main(): Promise<void> {
       ),
       interfaces: sampleReceipts.reduce(
         (total, item) => total + item.semantics.interfaces,
+        0
+      ),
+      resourceEdges: sampleReceipts.reduce(
+        (total, item) => total + item.resources.resourceEdges,
+        0
+      ),
+      mcuPins: sampleReceipts.reduce(
+        (total, item) => total + item.resources.mcuPinUsage.pins,
+        0
+      ),
+      unusedMcuPinsConfirmed: sampleReceipts.reduce(
+        (total, item) => total + item.resources.mcuPinUsage.unusedConfirmed,
         0
       ),
       privatePathsDisclosed: false
