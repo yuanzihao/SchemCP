@@ -16,16 +16,27 @@ import process from "node:process";
 import { promisify } from "node:util";
 import { compileProject } from "../application/compile-project.js";
 import { canonicalJson, sha256CanonicalJson } from "../core/canonical-json.js";
-import type { EdaIr, EdaIrSummary } from "../ir/model.js";
+import type {
+  EdaIr,
+  EdaIrSummary,
+  IrComponentRole,
+  IrInterface,
+  IrInterfaceType
+} from "../ir/model.js";
 import { buildNetlistComparisonReport } from "../truth/compare-netlist-evidence.js";
 import { readPrivateNetlist } from "../truth/import-netlist-evidence.js";
 import {
   parseRealProjectManifest,
+  REAL_PROJECT_COMPONENT_ROLES,
+  REAL_PROJECT_INTERFACE_MATRIX_KEYS,
+  REAL_PROJECT_INTERFACE_TYPES,
   REAL_PROJECT_MANIFEST_LIMITS,
   type RealProjectAssemblyBaseline,
   type RealProjectBusBaseline,
   type RealProjectComparisonBaseline,
   type RealProjectHierarchyBaseline,
+  type RealProjectInterfaceMatrix,
+  type RealProjectSemanticBaseline,
   type RealProjectSampleManifest
 } from "./real-project-manifest.js";
 
@@ -74,6 +85,7 @@ interface SampleReceipt {
     readonly symbolPinsHidden: number;
   };
   readonly bus: RealProjectBusBaseline;
+  readonly semantics: RealProjectSemanticBaseline;
   readonly comparison: {
     readonly status: string;
     readonly candidateTupleCount: number;
@@ -279,6 +291,86 @@ function busEvidence(
   return actual;
 }
 
+function interfaceMatrixKey(
+  item: IrInterface
+): (typeof REAL_PROJECT_INTERFACE_MATRIX_KEYS)[number] {
+  const status =
+    item.status === "CANDIDATE"
+      ? "candidate"
+      : item.status === "PARTIAL_CANDIDATE"
+        ? "partialCandidate"
+        : "unresolved";
+  const activity =
+    item.activityStatus === "ACTIVE"
+      ? "Active"
+      : item.activityStatus === "EXCLUDED_DNP"
+        ? "ExcludedDnp"
+        : "AssemblyUnknown";
+  return `${status}${activity}` as (typeof REAL_PROJECT_INTERFACE_MATRIX_KEYS)[number];
+}
+
+function emptyInterfaceMatrix(): Record<
+  (typeof REAL_PROJECT_INTERFACE_MATRIX_KEYS)[number],
+  number
+> {
+  return Object.fromEntries(
+    REAL_PROJECT_INTERFACE_MATRIX_KEYS.map((key) => [key, 0])
+  ) as Record<(typeof REAL_PROJECT_INTERFACE_MATRIX_KEYS)[number], number>;
+}
+
+function semanticEvidence(
+  ir: EdaIr,
+  baseline: RealProjectSemanticBaseline,
+  sampleId: string
+): RealProjectSemanticBaseline {
+  const roles = Object.fromEntries(
+    REAL_PROJECT_COMPONENT_ROLES.map((role) => [role, 0])
+  ) as Record<IrComponentRole, number>;
+  for (const semantic of ir.componentSemantics) {
+    roles[semantic.primaryRole] += 1;
+  }
+  const interfacesByType = Object.fromEntries(
+    REAL_PROJECT_INTERFACE_TYPES.map((type) => [type, emptyInterfaceMatrix()])
+  ) as Record<IrInterfaceType, Record<keyof RealProjectInterfaceMatrix, number>>;
+  for (const item of ir.interfaces) {
+    interfacesByType[item.type][interfaceMatrixKey(item)] += 1;
+  }
+  const actual: RealProjectSemanticBaseline = {
+    componentSemantics: ir.summary.componentSemantics,
+    componentSemanticsUnknownRole: ir.summary.componentSemanticsUnknownRole,
+    componentPowerDomainCandidates:
+      ir.summary.componentPowerDomainCandidates,
+    roles,
+    interfaces: ir.summary.interfaces,
+    interfacesByType
+  };
+  for (const key of [
+    "componentSemantics",
+    "componentSemanticsUnknownRole",
+    "componentPowerDomainCandidates",
+    "interfaces"
+  ] as const) {
+    equalCount(actual[key], baseline[key], `${sampleId}.semantics.${key}`);
+  }
+  for (const role of REAL_PROJECT_COMPONENT_ROLES) {
+    equalCount(
+      actual.roles[role],
+      baseline.roles[role],
+      `${sampleId}.semantics.roles.${role}`
+    );
+  }
+  for (const type of REAL_PROJECT_INTERFACE_TYPES) {
+    for (const key of REAL_PROJECT_INTERFACE_MATRIX_KEYS) {
+      equalCount(
+        actual.interfacesByType[type][key],
+        baseline.interfacesByType[type][key],
+        `${sampleId}.semantics.interfacesByType.${type}.${key}`
+      );
+    }
+  }
+  return actual;
+}
+
 function verifyComparison(
   actual: SampleReceipt["comparison"],
   baseline: RealProjectComparisonBaseline,
@@ -390,6 +482,11 @@ async function verifySample(
       sample.sampleId
     ),
     bus: busEvidence(firstIr, sample.busBaseline, sample.sampleId),
+    semantics: semanticEvidence(
+      firstIr,
+      sample.semanticBaseline,
+      sample.sampleId
+    ),
     comparison
   };
 }
@@ -466,6 +563,8 @@ function parsePackageReceipt(stdout: string): {
   readonly realMultiUnitPinQuery: string;
   readonly realSeparatedPowerUnitQuery: string;
   readonly realAssemblyQuery: string;
+  readonly realSemanticQuery: string;
+  readonly realDnpInterfaceQuery: string;
 } {
   const lines = stdout.trim().split(/\r?\n/u);
   const last = lines[lines.length - 1];
@@ -488,7 +587,9 @@ function parsePackageReceipt(stdout: string): {
     record.realBusQuery !== "VERIFIED" ||
     record.realMultiUnitPinQuery !== "VERIFIED" ||
     record.realSeparatedPowerUnitQuery !== "VERIFIED" ||
-    record.realAssemblyQuery !== "VERIFIED"
+    record.realAssemblyQuery !== "VERIFIED" ||
+    record.realSemanticQuery !== "VERIFIED" ||
+    record.realDnpInterfaceQuery !== "VERIFIED"
   ) {
     fail("REAL_PROJECT_PACKAGE_GATE_FAILED", "候选包真实层级调用未通过");
   }
@@ -499,7 +600,9 @@ function parsePackageReceipt(stdout: string): {
     realBusQuery: record.realBusQuery,
     realMultiUnitPinQuery: record.realMultiUnitPinQuery,
     realSeparatedPowerUnitQuery: record.realSeparatedPowerUnitQuery,
-    realAssemblyQuery: record.realAssemblyQuery
+    realAssemblyQuery: record.realAssemblyQuery,
+    realSemanticQuery: record.realSemanticQuery,
+    realDnpInterfaceQuery: record.realDnpInterfaceQuery
   };
 }
 
@@ -507,6 +610,8 @@ async function verifyInstalledPackage(
   root: string,
   projectPath: string,
   assemblyProjectPath: string,
+  semanticProjectPath: string,
+  requiredMcuActiveInterfaceTypes: readonly IrInterfaceType[],
   npmCache: string
 ): Promise<ReturnType<typeof parsePackageReceipt>> {
   try {
@@ -515,7 +620,9 @@ async function verifyInstalledPackage(
       [
         "dist/src/verification/verify-package.js",
         projectPath,
-        assemblyProjectPath
+        assemblyProjectPath,
+        semanticProjectPath,
+        JSON.stringify(requiredMcuActiveInterfaceTypes)
       ],
       {
         cwd: root,
@@ -610,6 +717,18 @@ async function main(): Promise<void> {
   if (assemblyAcceptance === undefined) {
     fail("REAL_PROJECT_MANIFEST_INVALID", "候选包 DNP 验收样本缺失");
   }
+  const semanticAcceptance = manifest.samples.find(
+    (sample) =>
+      sample.sampleId === manifest.packageSemanticAcceptanceSampleId
+  );
+  const requiredMcuActiveInterfaceTypes =
+    semanticAcceptance?.semanticBaseline.requiredMcuActiveInterfaceTypes;
+  if (
+    semanticAcceptance === undefined ||
+    requiredMcuActiveInterfaceTypes === undefined
+  ) {
+    fail("REAL_PROJECT_MANIFEST_INVALID", "候选包语义验收样本缺失");
+  }
   const temporaryRoot = await mkdtemp(
     path.join(tmpdir(), "schemcp-real-projects-")
   );
@@ -619,6 +738,8 @@ async function main(): Promise<void> {
       root,
       acceptance.projectPath,
       assemblyAcceptance.projectPath,
+      semanticAcceptance.projectPath,
+      requiredMcuActiveInterfaceTypes,
       path.join(temporaryRoot, "npm-cache")
     );
   } finally {
@@ -638,7 +759,7 @@ async function main(): Promise<void> {
       `${path.basename(manifestPath, ".json")}.receipt.json`
     );
   const receiptSha256 = await writeReceipt(receiptPath, {
-    schemaVersion: "1.2.0",
+    schemaVersion: "1.3.0",
     gate: "REAL_PROJECTS_VERIFIED",
     baselineId: manifest.baselineId,
     sourceSnapshotSha256,
@@ -671,6 +792,14 @@ async function main(): Promise<void> {
       ),
       explicitBusEntries: sampleReceipts.reduce(
         (total, item) => total + item.bus.busEntries,
+        0
+      ),
+      componentSemantics: sampleReceipts.reduce(
+        (total, item) => total + item.semantics.componentSemantics,
+        0
+      ),
+      interfaces: sampleReceipts.reduce(
+        (total, item) => total + item.semantics.interfaces,
         0
       ),
       privatePathsDisclosed: false

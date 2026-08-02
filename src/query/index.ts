@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { canonicalJson } from "../core/canonical-json.js";
+import { SEMANTIC_RULE_SET_VERSION } from "../semantics/compile-semantics.js";
 import { unresolvedVariantAssembly } from "../variant/effective-component-state.js";
 import type {
   EdaIr,
@@ -13,9 +14,14 @@ import type {
   IrComponentGroup,
   IrComponentLibraryBinding,
   IrComponentOccurrence,
+  IrComponentSemantic,
   IrDiagnostic,
   IrInstanceAttributeOverride,
   IrInstanceContext,
+  IrInterface,
+  IrInterfaceActivityStatus,
+  IrInterfaceStatus,
+  IrInterfaceType,
   IrNetworkEndpointCandidate,
   IrNetworkEndpointCandidateKind,
   IrNetworkEndpointCandidateStatus,
@@ -112,6 +118,7 @@ export interface ComponentSummary {
   readonly mirrored: boolean;
   readonly assembly: IrComponent["assembly"];
   readonly pinCompleteness: IrComponent["pinCompleteness"];
+  readonly semantic?: IrComponentSemantic;
   readonly deviceTitle?: string;
   readonly symbolTitle?: string;
   readonly identity?: {
@@ -554,6 +561,22 @@ interface ComponentListOptions {
   readonly cursor?: string | undefined;
 }
 
+export interface InterfaceListOptions {
+  readonly type?: IrInterfaceType | undefined;
+  readonly status?: IrInterfaceStatus | undefined;
+  readonly activityStatus?: IrInterfaceActivityStatus | "ALL" | undefined;
+  readonly componentId?: string | undefined;
+  readonly pageId?: string | undefined;
+  readonly instanceContextId?: string | undefined;
+  readonly variantId?: string | undefined;
+  readonly limit?: number | undefined;
+  readonly cursor?: string | undefined;
+}
+
+export type InterfaceSummary = IrInterface & {
+  readonly instanceContextId?: string;
+};
+
 interface SchematicAnnotationListOptions {
   readonly pageId?: string | undefined;
   readonly textContains?: string | undefined;
@@ -837,6 +860,7 @@ function summarizeComponent(
   component: IrComponent,
   ir: EdaIr,
   identities: ReadonlyMap<string, UnresolvedComponentSummary>,
+  semantics: ReadonlyMap<string, IrComponentSemantic>,
   occurrence?: IrComponentOccurrence,
   variantId?: string
 ): ComponentSummary {
@@ -858,6 +882,7 @@ function summarizeComponent(
       : unresolvedVariantAssembly(occurrence?.assembly ?? component.assembly);
   const pinCompleteness =
     occurrence?.pinCompleteness ?? component.pinCompleteness;
+  const semantic = semantics.get(`${component.pageId}\n${component.id}`);
   return {
     id: component.id,
     pageId: component.pageId,
@@ -877,6 +902,7 @@ function summarizeComponent(
     mirrored: component.mirrored,
     assembly,
     pinCompleteness,
+    ...(semantic === undefined ? {} : { semantic }),
     ...(device?.title === undefined
       ? {}
       : { deviceTitle: device.title }),
@@ -1388,6 +1414,10 @@ export class EdaIrQueryIndex {
     string,
     UnresolvedComponentSummary
   >;
+  private readonly componentSemantics: ReadonlyMap<
+    string,
+    IrComponentSemantic
+  >;
   private readonly unresolvedComponentSummary: UnresolvedComponentInventorySummary;
   private readonly partMasters: readonly PartMasterRecord[];
   private readonly partMastersById: ReadonlyMap<string, PartMasterRecord>;
@@ -1404,6 +1434,7 @@ export class EdaIrQueryIndex {
   private readonly explicitNets: readonly ExplicitNetSummary[];
   private readonly buses: readonly IrBus[];
   private readonly busEntries: readonly IrBusEntry[];
+  private readonly interfaces: readonly IrInterface[];
   private readonly candidateNetlist: CandidateTupleCompilation;
   private readonly networkEndpointCandidates: readonly IrNetworkEndpointCandidate[];
   private readonly shortRelations: readonly IrShortRelationCandidate[];
@@ -1481,6 +1512,12 @@ export class EdaIrQueryIndex {
         item
       ])
     );
+    this.componentSemantics = new Map(
+      ir.componentSemantics.map((semantic) => [
+        `${semantic.pageId}\n${semantic.componentId}`,
+        semantic
+      ])
+    );
     this.unresolvedComponents = identityInventory.items.filter(
       (item) => item.reasons.length > 0
     );
@@ -1547,6 +1584,12 @@ export class EdaIrQueryIndex {
         left.order - right.order ||
         compareText(left.id, right.id) ||
         compareText(left.encoding, right.encoding)
+    );
+    this.interfaces = [...ir.interfaces].sort(
+      (left, right) =>
+        compareText(left.type, right.type) ||
+        compareText(left.group, right.group) ||
+        compareText(left.id, right.id)
     );
     this.candidateNetlist = compileCandidateNetlistTuples(ir.pinInstances);
     this.networkEndpointCandidates = [...ir.networkEndpointCandidates].sort(
@@ -1644,6 +1687,7 @@ export class EdaIrQueryIndex {
           component,
           this.ir,
           this.componentIdentities,
+          this.componentSemantics,
           occurrence,
           variantId
         )
@@ -2082,6 +2126,7 @@ export class EdaIrQueryIndex {
               component,
               this.ir,
               this.componentIdentities,
+              this.componentSemantics,
               occurrence,
               variantId
             )
@@ -2104,6 +2149,7 @@ export class EdaIrQueryIndex {
       selected,
       this.ir,
       this.componentIdentities,
+      this.componentSemantics,
       occurrence,
       variantId
     );
@@ -2265,6 +2311,123 @@ export class EdaIrQueryIndex {
       pins: paginate(pins, query.limit, query.cursor, scope),
       connectionTruth: "NOT_VERIFIED"
     };
+  }
+
+  public listInterfaces(
+    options: InterfaceListOptions = {}
+  ): Page<InterfaceSummary> {
+    const componentId = validateText(options.componentId, "componentId");
+    const pageId = validateText(options.pageId, "pageId");
+    const instanceContextId = validateText(
+      options.instanceContextId,
+      "instanceContextId"
+    );
+    const variantId = validateText(options.variantId, "variantId");
+    this.assertVariantExists(variantId);
+    const occurrences =
+      instanceContextId === undefined
+        ? []
+        : this.componentOccurrences.filter(
+            (occurrence) =>
+              occurrence.instanceContextId === instanceContextId
+          );
+    const occurrenceByComponent = new Map(
+      occurrences.map((occurrence) => [
+        `${occurrence.pageId}\n${occurrence.componentId}`,
+        occurrence
+      ])
+    );
+    const requestedActivity = options.activityStatus ?? "ACTIVE";
+    const filtered = this.interfaces
+      .filter(
+        (item) =>
+          (componentId === undefined ||
+            item.componentRefs.some(
+              (component) => component.componentId === componentId
+            )) &&
+          (pageId === undefined ||
+            item.componentRefs.some((component) => component.pageId === pageId)) &&
+          (options.type === undefined || item.type === options.type)
+      )
+      .filter(
+        (item) =>
+          instanceContextId === undefined ||
+          item.componentRefs.some((component) =>
+            occurrenceByComponent.has(
+              `${component.pageId}\n${component.componentId}`
+            )
+          )
+      )
+      .map((item): InterfaceSummary => {
+        const matchingOccurrences = item.componentRefs.flatMap((component) => {
+          const occurrence = occurrenceByComponent.get(
+            `${component.pageId}\n${component.componentId}`
+          );
+          return occurrence === undefined ? [] : [occurrence];
+        });
+        let activityStatus = item.activityStatus;
+        let status = item.status;
+        const unresolvedReasons = new Set(item.unresolvedReasons);
+        if (instanceContextId !== undefined) {
+          const statuses = new Set(
+            matchingOccurrences.map((occurrence) => occurrence.assembly.status)
+          );
+          if (
+            matchingOccurrences.length === item.componentRefs.length &&
+            statuses.size === 1 &&
+            statuses.has("DNP")
+          ) {
+            activityStatus = "EXCLUDED_DNP";
+          } else if (
+            matchingOccurrences.length === item.componentRefs.length &&
+            statuses.size === 1 &&
+            statuses.has("POPULATED")
+          ) {
+            activityStatus = "ACTIVE";
+          } else {
+            activityStatus = "ASSEMBLY_UNKNOWN";
+          }
+          if (
+            matchingOccurrences.some(
+              (occurrence) => occurrence.pinCompleteness.status === "UNKNOWN"
+            )
+          ) {
+            unresolvedReasons.add("PIN_COMPLETENESS_UNKNOWN");
+          }
+        }
+        if (variantId !== undefined) activityStatus = "ASSEMBLY_UNKNOWN";
+        if (activityStatus === "ASSEMBLY_UNKNOWN") {
+          status = "UNRESOLVED";
+          unresolvedReasons.add("ASSEMBLY_UNKNOWN");
+        }
+        return {
+          ...item,
+          status,
+          activityStatus,
+          unresolvedReasons: [...unresolvedReasons].sort(compareText),
+          truthStatus:
+            status === "UNRESOLVED" ? "UNRESOLVED" : "CANDIDATE",
+          ...(instanceContextId === undefined ? {} : { instanceContextId })
+        };
+      })
+      .filter(
+        (item) =>
+          (options.status === undefined || item.status === options.status) &&
+          (requestedActivity === "ALL" ||
+            item.activityStatus === requestedActivity)
+      );
+    const scope = scopeHash("interfaces", {
+      project: this.ir.irSha256,
+      type: options.type ?? "",
+      status: options.status ?? "",
+      activityStatus: requestedActivity,
+      componentId: componentId ?? "",
+      pageId: pageId ?? "",
+      instanceContextId: instanceContextId ?? "",
+      variantId: variantId ?? "",
+      semanticRuleSetVersion: SEMANTIC_RULE_SET_VERSION
+    });
+    return paginate(filtered, options.limit, options.cursor, scope);
   }
 
   public listExplicitNets(options: ExplicitNetListOptions = {}): Page<ExplicitNetSummary> {

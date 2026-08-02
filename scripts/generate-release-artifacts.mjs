@@ -86,7 +86,7 @@ const receipt = {
     sha256: sha256(tarballBytes)
   },
   publicMcpContract: {
-    toolCount: 49,
+    toolCount: 50,
     sha256: sha256(contractBytes)
   },
   supplyChain: {

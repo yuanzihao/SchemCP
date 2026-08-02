@@ -76,6 +76,10 @@ const EPRU = [
     { type: "ATTR", id: "attr-frequency", ticket: 5 },
     { parentId: "component-a", key: "Frequency", value: "168MHz" }
   ),
+  record(
+    { type: "ATTR", id: "attr-add-into-bom", ticket: 5 },
+    { parentId: "component-a", key: "Add into BOM", value: "yes" }
+  ),
   record({ type: "WIRE", id: "wire-a", ticket: 6 }, { locked: false }),
   record(
     { type: "ATTR", id: "attr-net", ticket: 7 },
@@ -215,12 +219,17 @@ const EPRU = [
       x: 0,
       y: 0,
       length: 20,
-      rotation: 0
+      rotation: 0,
+      display: true
     }
   ),
   record(
     { type: "ATTR", id: "attr-pin-number", ticket: 14 },
     { parentId: "pin-a", key: "Pin Number", value: "1" }
+  ),
+  record(
+    { type: "ATTR", id: "attr-pin-name", ticket: 14 },
+    { parentId: "pin-a", key: "Pin Name", value: "USB_DP" }
   ),
   record(
     { type: "DOCHEAD" },
@@ -887,6 +896,30 @@ test("MCP 无工程启动后可直接打开对话附件并安全关闭", async (
         ["bus-entry-b", 1]
       ]
     );
+
+    const interfaces = structured(
+      await client.callTool({
+        name: "list_interfaces",
+        arguments: { type: "USB", status: "PARTIAL_CANDIDATE" }
+      })
+    );
+    assert.equal(
+      interfaces.semanticRuleSetVersion,
+      "schemcp.semantic-rules/1"
+    );
+    const interfaceItems = (
+      interfaces.page as {
+        readonly items: readonly {
+          readonly type: string;
+          readonly activityStatus: string;
+          readonly missingSignals: readonly string[];
+        }[];
+      }
+    ).items;
+    assert.equal(interfaceItems.length, 1);
+    assert.equal(interfaceItems[0]?.type, "USB");
+    assert.equal(interfaceItems[0]?.activityStatus, "ACTIVE");
+    assert.deepEqual(interfaceItems[0]?.missingSignals, ["DM"]);
 
     const contexts = structured(
       await client.callTool({

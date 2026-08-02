@@ -34,6 +34,8 @@ npm 包：`@yuanzihao/schemcp`
 - **显式总线事实**：兼容官方独立 `BUSENTRY` 与当前导出的内嵌 `busEntry`，保留 `NET`、成员顺序和坐标，不自动展开总线名称。
 - **有效装配状态**：按 Device 默认值、组件属性、层级实例覆盖的固定顺序解析 `Add into BOM`；仅显式 `yes/no` 返回 `POPULATED/DNP`，其余保持 `UNKNOWN`。
 - **完整逻辑器件引脚**：按同一原理图中的位号、Symbol 和 `PART` 合并多单元器件及分离电源单元；缺失、重复或来源不完整时返回 `PARTIAL/UNKNOWN`，并保留显式隐藏引脚。
+- **版本化组件语义**：`schemcp.semantic-rules/1` 以确定性规则给出 MCU/MPU、电源、存储器、收发器、连接器、保护/滤波等角色候选及页内电源域候选；每项都保留规则、证据和 `CANDIDATE/UNRESOLVED` 边界。
+- **实际连接接口候选**：`list_interfaces` 识别 SWD/JTAG、UART、I²C、SPI/QSPI、CAN、USB、Ethernet、SDIO、I²S/SAI、模拟和 GPIO；未接线复用功能不会形成接口，缺少信号只返回 `PARTIAL_CANDIDATE`，DNP 默认排除但可查询证据。
 - **可选 `.enet`**：用户可按工程附加网表，以精确核对引脚—网络端点。
 - **事实边界明确**：工程事实、器件事实和工程推断分开返回，不把几何候选冒充完整电气真值。
 - **只读且有界**：工具使用分页、稳定错误码和输入限额；不会修改原理图或生成代码。
@@ -61,6 +63,7 @@ Linux 与 macOS 对私有目录和文件强制检查 `0700/0600`。Windows 不�
 | 嘉立创 EDA 专业版 `.epro2` 原理图离线解析 | 支持 |
 | 用户提供的 `.enet` 按工程绑定 | 支持，真实性与工程绑定保持未验证 |
 | 器件、引脚、显式网络标签、几何候选查询 | 支持 |
+| 组件角色、电源域和实际连接接口候选 | 支持，确定性规则推断且电气真值未验证 |
 | 用户确认的多工程连接器映射 | 支持 |
 | Altium、KiCad、OrCAD 等其他 EDA 原理图工程 | 不支持，暂无解析计划；建议先导入嘉立创 EDA 专业版并核对后导出 `.epro2` |
 | PCB、在线 Bridge、插件 API、工程写入、代码生成 | 不支持 |
@@ -271,7 +274,7 @@ schemcp
 ## 文档与安全
 
 - [MCP 接口说明](docs/MCP_SERVICE.md)
-- [49 个 MCP 工具与 JSON Schema](docs/MCP_TOOLS.md)
+- [50 个 MCP 工具与 JSON Schema](docs/MCP_TOOLS.md)
 - [用户指南](docs/USER_GUIDE.md)
 - [贡献指南](CONTRIBUTING.md)
 - [安全策略](SECURITY.md)

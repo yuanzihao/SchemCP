@@ -420,6 +420,8 @@ async function assertInstalledPackagePrivacy(
 async function main(): Promise<void> {
   const projectArgument = process.argv[2];
   const assemblyProjectArgument = process.argv[3];
+  const semanticProjectArgument = process.argv[4];
+  const semanticInterfaceTypesArgument = process.argv[5];
   if (projectArgument !== undefined) {
     assert.equal(path.isAbsolute(projectArgument), true, "真实工程必须使用绝对路径");
     assert.equal(path.extname(projectArgument).toLowerCase(), ".epro2");
@@ -432,6 +434,52 @@ async function main(): Promise<void> {
     );
     assert.equal(path.extname(assemblyProjectArgument).toLowerCase(), ".epro2");
     assert.ok(projectArgument !== undefined, "DNP 真实工程不能脱离主验收工程");
+  }
+  if (semanticProjectArgument !== undefined) {
+    assert.equal(
+      path.isAbsolute(semanticProjectArgument),
+      true,
+      "语义真实工程必须使用绝对路径"
+    );
+    assert.equal(path.extname(semanticProjectArgument).toLowerCase(), ".epro2");
+    assert.ok(projectArgument !== undefined, "语义真实工程不能脱离主验收工程");
+  }
+  const parsedSemanticInterfaceTypes: unknown =
+    semanticInterfaceTypesArgument === undefined
+      ? []
+      : JSON.parse(semanticInterfaceTypesArgument);
+  assert.equal(Array.isArray(parsedSemanticInterfaceTypes), true);
+  const semanticInterfaceTypes = parsedSemanticInterfaceTypes as unknown[];
+  assert.equal(
+    semanticProjectArgument === undefined,
+    semanticInterfaceTypesArgument === undefined,
+    "语义工程和接口断言必须同时提供"
+  );
+  if (semanticProjectArgument !== undefined) {
+    assert.ok(semanticInterfaceTypes.length > 0, "真实语义接口断言不得为空");
+    assert.equal(
+      semanticInterfaceTypes.every(
+        (item) =>
+          typeof item === "string" &&
+          [
+            "SWD",
+            "JTAG",
+            "UART",
+            "I2C",
+            "SPI",
+            "QSPI",
+            "CAN",
+            "USB",
+            "ETHERNET",
+            "SDIO",
+            "I2S_SAI",
+            "ANALOG",
+            "GPIO_GROUP"
+          ].includes(item)
+      ),
+      true,
+      "真实语义接口断言包含未知类型"
+    );
   }
 
   const root = process.cwd();
@@ -663,6 +711,17 @@ async function main(): Promise<void> {
             }
           ).pins.total,
           4
+        );
+        const syntheticInterfaces = structured(
+          await client.callTool({
+            name: "list_interfaces",
+            arguments: { projectHandle: leftHandle, limit: 50 }
+          })
+        );
+        assert.equal(
+          (syntheticInterfaces.page as { readonly total: number }).total,
+          0,
+          "无显式连接候选的合成工程不得误报接口"
         );
 
         for (const [projectHandle, netlistPath] of [
@@ -1042,6 +1101,160 @@ async function main(): Promise<void> {
             ).component.assembly.status,
             "DNP"
           );
+          const excludedInterfaces = structured(
+            await client.callTool({
+              name: "list_interfaces",
+              arguments: {
+                activityStatus: "EXCLUDED_DNP",
+                limit: 50
+              }
+            })
+          );
+          assert.equal(
+            excludedInterfaces.ok,
+            true,
+            `DNP 接口排除查询失败：${JSON.stringify(excludedInterfaces.error ?? null)}`
+          );
+          const excludedInterfacePage = excludedInterfaces.page as {
+            readonly total: number;
+            readonly items: readonly {
+              readonly activityStatus: string;
+            }[];
+          };
+          assert.ok(
+            excludedInterfacePage.total > 0,
+            "真实 DNP 工程必须保留至少一个接口排除证据"
+          );
+          assert.equal(
+            excludedInterfacePage.items.every(
+              (item) => item.activityStatus === "EXCLUDED_DNP"
+            ),
+            true
+          );
+          const defaultInterfaces = structured(
+            await client.callTool({
+              name: "list_interfaces",
+              arguments: { limit: 50 }
+            })
+          );
+          assert.equal(
+            defaultInterfaces.ok,
+            true,
+            `活动接口默认查询失败：${JSON.stringify(defaultInterfaces.error ?? null)}`
+          );
+          assert.equal(
+            (
+              defaultInterfaces.page as {
+                readonly items: readonly {
+                  readonly activityStatus: string;
+                }[];
+              }
+            ).items.every((item) => item.activityStatus === "ACTIVE"),
+            true,
+            "接口默认查询不得混入 DNP 或装配未知证据"
+          );
+        }
+
+        if (semanticProjectArgument !== undefined) {
+          const semanticOpened = structured(
+            await client.callTool({
+              name: "open_schematic_project",
+              arguments: { projectPath: semanticProjectArgument }
+            })
+          );
+          assert.equal(semanticOpened.ok, true);
+          const mcuComponents: {
+            readonly id: string;
+            readonly pageId: string;
+            readonly semantic?: { readonly primaryRole: string };
+          }[] = [];
+          let componentCursor: string | undefined;
+          do {
+            const componentResult = structured(
+              await client.callTool({
+                name: "list_components",
+                arguments: {
+                  limit: 50,
+                  ...(componentCursor === undefined
+                    ? {}
+                    : { cursor: componentCursor })
+                }
+              })
+            );
+            assert.equal(
+              componentResult.ok,
+              true,
+              `MCU 组件查询失败：${JSON.stringify(componentResult.error ?? null)}`
+            );
+            const componentPage = componentResult.page as {
+              readonly items: readonly (typeof mcuComponents)[number][];
+              readonly nextCursor?: string;
+            };
+            mcuComponents.push(
+              ...componentPage.items.filter(
+                (component) => component.semantic?.primaryRole === "MCU_MPU"
+              )
+            );
+            componentCursor = componentPage.nextCursor;
+          } while (componentCursor !== undefined);
+          assert.ok(mcuComponents.length > 0, "真实语义工程必须识别 MCU 角色");
+
+          const activeMcuInterfaces: {
+            readonly type: string;
+            readonly status: string;
+            readonly activityStatus: string;
+          }[] = [];
+          for (const component of mcuComponents) {
+            let interfaceCursor: string | undefined;
+            do {
+              const interfaceResult = structured(
+                await client.callTool({
+                  name: "list_interfaces",
+                  arguments: {
+                    componentId: component.id,
+                    pageId: component.pageId,
+                    activityStatus: "ACTIVE",
+                    limit: 50,
+                    ...(interfaceCursor === undefined
+                      ? {}
+                      : { cursor: interfaceCursor })
+                  }
+                })
+              );
+              assert.equal(
+                interfaceResult.ok,
+                true,
+                `MCU 接口查询失败：${JSON.stringify(interfaceResult.error ?? null)}`
+              );
+              const interfacePage = interfaceResult.page as {
+                readonly items: readonly (typeof activeMcuInterfaces)[number][];
+                readonly nextCursor?: string;
+              };
+              activeMcuInterfaces.push(...interfacePage.items);
+              interfaceCursor = interfacePage.nextCursor;
+            } while (interfaceCursor !== undefined);
+          }
+          assert.equal(
+            activeMcuInterfaces.some(
+              (item) =>
+                item.status === "CANDIDATE" &&
+                item.activityStatus === "ACTIVE"
+            ),
+            true,
+            "真实 MCU 必须包含完整的活动接口候选"
+          );
+          const observedTypes = new Set(
+            activeMcuInterfaces
+              .filter((item) => item.status !== "UNRESOLVED")
+              .map((item) => item.type)
+          );
+          for (const type of semanticInterfaceTypes) {
+            assert.equal(
+              observedTypes.has(type as string),
+              true,
+              `真实 MCU 缺少预期活动接口类型 ${String(type)}`
+            );
+          }
         }
       }
     } finally {
@@ -1071,6 +1284,10 @@ async function main(): Promise<void> {
         realSeparatedPowerUnitQuery:
           projectArgument === undefined ? "NOT_REQUESTED" : "VERIFIED",
         realAssemblyQuery:
+          assemblyProjectArgument === undefined ? "NOT_REQUESTED" : "VERIFIED",
+        realSemanticQuery:
+          semanticProjectArgument === undefined ? "NOT_REQUESTED" : "VERIFIED",
+        realDnpInterfaceQuery:
           assemblyProjectArgument === undefined ? "NOT_REQUESTED" : "VERIFIED",
         syntheticNetlistBinding:
           projectArgument === undefined ? "VERIFIED" : "NOT_REQUESTED",

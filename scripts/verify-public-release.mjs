@@ -105,8 +105,8 @@ assert.equal(mcpContract.server.id, "schemcp");
 assert.equal(mcpContract.server.package, packageJson.name);
 assert.equal(mcpContract.server.version, packageJson.version);
 assert.equal(mcpContract.transport, "stdio");
-assert.equal(mcpContract.toolCount, 49);
-assert.equal(mcpContract.tools.length, 49);
+assert.equal(mcpContract.toolCount, 50);
+assert.equal(mcpContract.tools.length, 50);
 assert.equal(
   mcpContract.tools.every(
     (tool) =>
@@ -116,7 +116,7 @@ assert.equal(
       tool.outputSchema?.required?.includes("ok")
   ),
   true,
-  "49 个工具必须同时公开输入和结果 Schema"
+  "50 个工具必须同时公开输入和结果 Schema"
 );
 assert.equal(
   mcpContract.tools.some((tool) => /pcb|bridge/iu.test(tool.name)),

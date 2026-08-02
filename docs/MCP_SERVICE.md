@@ -10,7 +10,7 @@ SchemCP `0.1.0` 提供只读 stdio MCP 服务。服务可无工程启动，只�
 npx -y @yuanzihao/schemcp
 ```
 
-无参数和显式 `mcp` 子命令等价。stdout 仅承载 MCP 协议消息，日志与诊断写入 stderr。公共契约固定为 49 个原理图工具、0 个 PCB 工具，不存在 `--profile` 或内部全量档。
+无参数和显式 `mcp` 子命令等价。stdout 仅承载 MCP 协议消息，日志与诊断写入 stderr。公共契约固定为 50 个原理图工具、0 个 PCB 工具，不存在 `--profile` 或内部全量档。
 
 ## 工具分组
 
@@ -21,6 +21,7 @@ npx -y @yuanzihao/schemcp
 | 器件与引脚 | `list_components`、`get_component`、`get_component_pins`、`get_component_pin_connectivity`、`list_direct_component_connections`、`list_unresolved_components` |
 | 原理图内容 | `list_schematic_annotations`、`list_schematic_graphic_primitives`、`list_schematic_tables`、`get_schematic_table`、`list_symbol_texts` |
 | 网络与候选 | `list_explicit_nets`、`list_buses`、`list_candidate_netlist_tuples`、`list_candidate_netlist_exclusions`、`list_network_endpoint_candidates`、`list_short_relation_candidates` |
+| 组件语义与接口 | 组件查询中的 `semantic`、`list_interfaces` |
 | `.enet` | `attach_schematic_netlist`、`detach_schematic_netlist`、`get_netlist_comparison_summary`、`list_netlist_comparison_tuples`、`list_bound_electrical_nets`、`get_net` |
 | 器件资料 | `list_part_masters`、`get_part_master`、`list_datasheet_references`、`get_datasheet_section` |
 | Variant 与差异 | `get_variant`、`list_variant_overrides`、`diff_project_versions` |
@@ -31,6 +32,8 @@ npx -y @yuanzihao/schemcp
 所有列表工具均有页大小上限。游标绑定工程、查询种类和筛选条件，不能跨查询复用。重复位号不会被静默选择，调用方应提供页面或组件 ID 消歧。
 
 `list_components` 可按 `assemblyStatus` 和 `pinCompletenessStatus` 筛选。装配状态只把有效 `Add into BOM=yes/no` 映射为 `POPULATED/DNP`，并保留 Device 默认值、组件属性或层级实例覆盖的来源；缺失、冲突、非法值以及尚未应用的 Variant 一律返回 `UNKNOWN`。`get_component_pins` 只在 Symbol `PART` 集合可证明完整时合并同位号多单元器件，显式 `display=false` 引脚不会被丢弃。
+
+组件查询中的 `semantic` 使用 `schemcp.semantic-rules/1` 返回角色和页内电源域候选。`list_interfaces` 只从存在导线接触的引脚名称与显式网络候选识别接口：无导线或显式 NC 不产生接口，只有未命名导线或连接冲突时返回 `UNRESOLVED`。DNP 默认不出现在活动接口结果中，使用 `activityStatus=EXCLUDED_DNP` 可审计排除证据。所有结果都是确定性工程推断，不是数据手册事实或已验证电气真值。
 
 ## 工程与附件
 

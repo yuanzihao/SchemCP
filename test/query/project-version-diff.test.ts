@@ -3,6 +3,8 @@ import test from "node:test";
 import type {
   EdaIr,
   IrComponent,
+  IrComponentSemantic,
+  IrInterface,
   IrRecordProvenance,
   IrSchematicAnnotation,
   IrSchematicTable,
@@ -84,6 +86,60 @@ function component(
     attributes: [],
     provenance: { ...PROVENANCE, recordId: id, ticket },
     extensions: { easyeda: { ignoredVendorField: ticket } }
+  };
+}
+
+function componentSemantic(
+  componentId: string,
+  primaryRole: IrComponentSemantic["primaryRole"]
+): IrComponentSemantic {
+  return {
+    id: `semantic-${componentId}`,
+    componentId,
+    pageId: "page-a",
+    logicalComponentId: `logical-${componentId}`,
+    unitComponentIds: [componentId],
+    primaryRole,
+    roles: [
+      {
+        role: primaryRole,
+        ruleId: `fixture.${primaryRole.toLocaleLowerCase("en-US")}.v1`,
+        evidenceClass: "DETERMINISTIC_RULE",
+        truthStatus: primaryRole === "UNKNOWN" ? "UNRESOLVED" : "CANDIDATE",
+        semanticRuleSetVersion: "schemcp.semantic-rules/1",
+        provenance: [PROVENANCE]
+      }
+    ],
+    powerDomains: [],
+    ruleId: "component.semantic.aggregate.v1",
+    evidenceClass: "DETERMINISTIC_RULE",
+    truthStatus: primaryRole === "UNKNOWN" ? "UNRESOLVED" : "CANDIDATE",
+    semanticRuleSetVersion: "schemcp.semantic-rules/1",
+    provenance: [PROVENANCE]
+  };
+}
+
+function interfaceCandidate(
+  id: string,
+  status: IrInterface["status"]
+): IrInterface {
+  return {
+    id,
+    type: "SWD",
+    group: "SWD",
+    logicalComponentId: "logical-component-a",
+    componentRefs: [{ componentId: "component-a", pageId: "page-a" }],
+    status,
+    activityStatus: "ACTIVE",
+    signals: [],
+    requiredSignals: ["SWDIO", "SWCLK"],
+    missingSignals: status === "CANDIDATE" ? [] : ["SWCLK"],
+    unresolvedReasons: status === "UNRESOLVED" ? ["ASSEMBLY_UNKNOWN"] : [],
+    ruleId: "interface.swd.signal-set.v1",
+    evidenceClass: "DETERMINISTIC_RULE",
+    truthStatus: status === "UNRESOLVED" ? "UNRESOLVED" : "CANDIDATE",
+    semanticRuleSetVersion: "schemcp.semantic-rules/1",
+    provenance: [PROVENANCE]
   };
 }
 
@@ -248,6 +304,8 @@ function ir(
     readonly schematicAnnotations?: readonly IrSchematicAnnotation[];
     readonly schematicTables?: readonly IrSchematicTable[];
     readonly symbolTexts?: readonly IrSymbolText[];
+    readonly componentSemantics?: readonly IrComponentSemantic[];
+    readonly interfaces?: readonly IrInterface[];
     readonly irSha256?: string;
     readonly archiveSha256?: string;
   } = {}
@@ -257,6 +315,8 @@ function ir(
   const schematicAnnotations = options.schematicAnnotations ?? [];
   const schematicTables = options.schematicTables ?? [];
   const symbolTexts = options.symbolTexts ?? [];
+  const componentSemantics = options.componentSemantics ?? [];
+  const interfaces = options.interfaces ?? [];
   return {
     schema: "schemcp.eda-ir",
     schemaVersion: "1.1.0",
@@ -283,6 +343,8 @@ function ir(
     instanceContexts: [],
     componentOccurrences: [],
     components,
+    componentSemantics,
+    interfaces,
     symbols: [],
     symbolParts: [],
     symbolTexts,
@@ -398,6 +460,35 @@ test("同一实体新增可选字段时显式报告字段变化", () => {
   });
   assert.equal(changes.total, 1);
   assert.deepEqual(changes.items[0]?.changedFields, ["deviceId"]);
+});
+
+test("工程差异覆盖组件语义和接口候选", () => {
+  const baselineSemantic = componentSemantic("component-a", "UNKNOWN");
+  const currentSemantic = componentSemantic("component-a", "MCU_MPU");
+  const baselineInterface = interfaceCandidate("interface-a", "PARTIAL_CANDIDATE");
+  const currentInterface = interfaceCandidate("interface-a", "CANDIDATE");
+  const index = new ProjectVersionDiffIndex(
+    ir({
+      componentSemantics: [baselineSemantic],
+      interfaces: [baselineInterface]
+    }),
+    ir({
+      componentSemantics: [currentSemantic],
+      interfaces: [currentInterface],
+      irSha256: "d".repeat(64)
+    })
+  );
+  assert.equal(index.summary.byEntityKind.COMPONENT_SEMANTIC.modified, 1);
+  assert.equal(index.summary.byEntityKind.INTERFACE.modified, 1);
+  assert.deepEqual(
+    index.listChanges({ entityKind: "COMPONENT_SEMANTIC" }).items[0]
+      ?.changedFields,
+    ["primaryRole", "roles", "truthStatus"]
+  );
+  assert.deepEqual(
+    index.listChanges({ entityKind: "INTERFACE" }).items[0]?.changedFields,
+    ["missingSignals", "status"]
+  );
 });
 
 

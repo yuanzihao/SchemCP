@@ -10,6 +10,7 @@ import {
   type RawInstanceContext
 } from "../hierarchy/resolve-instance-contexts.js";
 import { compileEffectiveComponentStates } from "../variant/effective-component-state.js";
+import { compileSemantics } from "../semantics/compile-semantics.js";
 import {
   compileComponentLibraryBindings,
   type ComponentBeforeLibraryBindings
@@ -3250,6 +3251,14 @@ export function compileV3ToEdaIr(
   );
   const pinInstances = pinInstanceCompilation.pinInstances;
   const pinSummary = pinInstanceCompilation.summary;
+  const semanticCompilation = compileSemantics(
+    components,
+    devices,
+    symbols,
+    pinInstances
+  );
+  const componentSemantics = semanticCompilation.componentSemantics;
+  const interfaces = semanticCompilation.interfaces;
   const instanceResolution = resolveInstanceContexts(rawInstanceContexts, {
     schematics,
     pages: schematicPages,
@@ -3732,6 +3741,34 @@ export function compileV3ToEdaIr(
     componentsPinCompletenessUnknown: components.filter(
       (item) => item.pinCompleteness.status === "UNKNOWN"
     ).length,
+    componentSemantics: componentSemantics.length,
+    componentSemanticsUnknownRole: componentSemantics.filter(
+      (item) => item.primaryRole === "UNKNOWN"
+    ).length,
+    componentPowerDomainCandidates: new Set(
+      componentSemantics.flatMap((item) =>
+        item.powerDomains.map((domain) => domain.id)
+      )
+    ).size,
+    interfaces: interfaces.length,
+    interfacesCandidate: interfaces.filter(
+      (item) => item.status === "CANDIDATE"
+    ).length,
+    interfacesPartialCandidate: interfaces.filter(
+      (item) => item.status === "PARTIAL_CANDIDATE"
+    ).length,
+    interfacesUnresolved: interfaces.filter(
+      (item) => item.status === "UNRESOLVED"
+    ).length,
+    interfacesActive: interfaces.filter(
+      (item) => item.activityStatus === "ACTIVE"
+    ).length,
+    interfacesExcludedDnp: interfaces.filter(
+      (item) => item.activityStatus === "EXCLUDED_DNP"
+    ).length,
+    interfacesAssemblyUnknown: interfaces.filter(
+      (item) => item.activityStatus === "ASSEMBLY_UNKNOWN"
+    ).length,
     componentsWithDesignator: components.filter((item) => item.designator !== undefined)
       .length,
     componentsWithDevice: components.filter((item) => item.deviceId !== undefined).length,
@@ -3859,6 +3896,8 @@ export function compileV3ToEdaIr(
     instanceContexts,
     componentOccurrences,
     components,
+    componentSemantics,
+    interfaces,
     symbols,
     symbolParts,
     symbolTexts,

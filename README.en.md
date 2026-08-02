@@ -34,6 +34,8 @@ License: Apache-2.0
 - **Explicit bus facts**: support official standalone `BUSENTRY` records and the embedded `busEntry` form seen in current exports while preserving `NET`, explicit order, and coordinates without expanding bus names.
 - **Effective assembly state**: resolve `Add into BOM` with a fixed Device-default, component-attribute, and hierarchy-instance precedence; only explicit `yes/no` values produce `POPULATED/DNP`, otherwise the result remains `UNKNOWN`.
 - **Complete logical-component pins**: merge multi-unit symbols and separated power units by schematic, designator, Symbol, and `PART`; missing, duplicate, or incomplete source data returns `PARTIAL/UNKNOWN`, while explicitly hidden pins remain visible to queries.
+- **Versioned component semantics**: `schemcp.semantic-rules/1` deterministically emits MCU/MPU, power, memory, transceiver, connector, protection/filter, and other role candidates plus page-scoped power-domain candidates; every result retains its rule, evidence, and `CANDIDATE/UNRESOLVED` boundary.
+- **Connection-backed interface candidates**: `list_interfaces` recognizes SWD/JTAG, UART, I²C, SPI/QSPI, CAN, USB, Ethernet, SDIO, I²S/SAI, analog, and GPIO interfaces. Unconnected alternate-function names do not create interfaces, missing signals remain `PARTIAL_CANDIDATE`, and DNP evidence is excluded by default but remains queryable.
 - **Optional `.enet` evidence**: bind a netlist to one project when exact pin-to-net endpoint comparison is needed.
 - **Explicit truth boundaries**: project facts, part facts, and engineering inferences remain distinguishable.
 - **Read-only and bounded**: tools use pagination, stable error codes, and input limits; SchemCP does not edit schematics or generate firmware.
@@ -61,6 +63,7 @@ Linux and macOS enforce private `0700/0600` directory and file modes. Windows do
 | Offline JLCEDA Pro `.epro2` schematic parsing | Supported |
 | Project-scoped user-provided `.enet` binding | Supported; authenticity and project binding remain unverified |
 | Component, pin, explicit net-label, and geometric-candidate queries | Supported |
+| Component roles, power domains, and connection-backed interface candidates | Supported as deterministic inferences with unverified electrical truth |
 | User-confirmed multi-project connector mappings | Supported |
 | Altium, KiCad, OrCAD, and other EDA schematic formats | Not supported and not planned; import into JLCEDA Pro, verify the conversion, and export `.epro2` first |
 | PCB, online Bridge, plugin APIs, project mutation, and code generation | Not supported |
@@ -268,7 +271,7 @@ schemcp
 ## Documentation and security
 
 - [MCP service reference](docs/MCP_SERVICE.md)
-- [49 MCP tools and JSON Schemas](docs/MCP_TOOLS.md)
+- [50 MCP tools and JSON Schemas](docs/MCP_TOOLS.md)
 - [User guide](docs/USER_GUIDE.md)
 - [Contributing](CONTRIBUTING.md)
 - [Security policy](SECURITY.md)

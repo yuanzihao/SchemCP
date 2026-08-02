@@ -66,7 +66,7 @@ async function listRuntimeContract() {
 }
 
 function assertPublicContract(tools, expectedNames) {
-  assert.equal(tools.length, 49, "公共 MCP 必须固定为 49 个工具");
+  assert.equal(tools.length, 50, "公共 MCP 必须固定为 50 个工具");
   assert.deepEqual(
     tools.map((tool) => tool.name),
     expectedNames,

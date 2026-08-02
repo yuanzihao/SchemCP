@@ -790,6 +790,12 @@ export function createEdaMcpServer(
             "AVAILABLE_DETERMINISTIC_SYMBOL_PART_AGGREGATION",
           hiddenSymbolPins:
             "AVAILABLE_ONLY_WHEN_EXPLICIT_PIN_DISPLAY_IS_FALSE",
+          componentSemanticRoles:
+            "AVAILABLE_VERSIONED_DETERMINISTIC_CANDIDATES",
+          componentPowerDomains:
+            "AVAILABLE_PAGE_SCOPED_EXPLICIT_PIN_NET_CANDIDATES",
+          interfaceCandidates:
+            "AVAILABLE_VERSIONED_SIGNAL_SET_RULES_DNP_EXCLUDED_BY_DEFAULT",
           variantInstanceContextMatching: "AVAILABLE_EXACT_ID_ONLY",
           variantOverrideApplication:
             "NOT_AVAILABLE_SELECTED_VARIANT_RETURNS_UNKNOWN_ASSEMBLY",
@@ -1804,6 +1810,74 @@ export function createEdaMcpServer(
           })
         };
       })
+  );
+
+  server.registerTool(
+    "list_interfaces",
+    {
+      title: "分页列出接口候选",
+      description:
+        "使用版本化确定性规则从显式引脚名称和网络候选识别 SWD/JTAG、UART、I²C、SPI/QSPI、CAN、USB、Ethernet、SDIO、I²S/SAI、模拟和 GPIO 接口。缺失规定信号只返回 PARTIAL_CANDIDATE；DNP 默认排除，可显式查询排除证据。",
+      inputSchema: {
+        type: z
+          .enum([
+            "SWD",
+            "JTAG",
+            "UART",
+            "I2C",
+            "SPI",
+            "QSPI",
+            "CAN",
+            "USB",
+            "ETHERNET",
+            "SDIO",
+            "I2S_SAI",
+            "ANALOG",
+            "GPIO_GROUP"
+          ])
+          .optional()
+          .describe("可选接口类型"),
+        status: z
+          .enum(["CANDIDATE", "PARTIAL_CANDIDATE", "UNRESOLVED"])
+          .optional()
+          .describe("可选接口识别状态"),
+        activityStatus: z
+          .enum(["ACTIVE", "EXCLUDED_DNP", "ASSEMBLY_UNKNOWN", "ALL"])
+          .optional()
+          .describe("装配活动筛选；默认仅 ACTIVE，ALL 同时返回 DNP 排除和装配未知证据"),
+        componentId: z
+          .string()
+          .min(1)
+          .max(QUERY_LIMITS.maxTextLength)
+          .optional()
+          .describe("可选精确组件 ID"),
+        pageId: z
+          .string()
+          .min(1)
+          .max(QUERY_LIMITS.maxTextLength)
+          .optional()
+          .describe("可选精确原理图页 ID"),
+        instanceContextId: z
+          .string()
+          .min(1)
+          .max(QUERY_LIMITS.maxTextLength)
+          .optional()
+          .describe("可选精确 INSTANCE 上下文 ID"),
+        variantId: z
+          .string()
+          .min(1)
+          .max(QUERY_LIMITS.maxTextLength)
+          .optional()
+          .describe("可选当前工程 Variant ID；未应用 Variant 时接口活动状态保守为 ASSEMBLY_UNKNOWN"),
+        ...PAGE_INPUT
+      },
+      annotations: READ_ONLY_ANNOTATIONS
+    },
+    (args) =>
+      runQuery(() => ({
+        semanticRuleSetVersion: "schemcp.semantic-rules/1",
+        page: index.listInterfaces(args)
+      }))
   );
 
   server.registerTool(

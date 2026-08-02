@@ -15,6 +15,10 @@
 - 新增多单元逻辑器件引脚完整性模型，按 Symbol `PART` 聚合分离单元和电源单元，保留显式隐藏引脚，并以 `COMPLETE/PARTIAL/UNKNOWN` 阻止不完整数据被误判为未使用引脚。
 - `list_components`、`get_component` 和 `get_component_pins` 新增 Variant、装配状态和引脚完整性作用域；选择尚未应用的 Variant 时装配状态保守返回 `UNKNOWN`。
 - 真实工程安装态门禁增加 DNP 与完整多单元引脚聚合调用，私有清单契约升级为 1.2.0。
+- 新增 `IrComponentSemantic`、版本化 `schemcp.semantic-rules/1` 组件角色候选和页内电源域候选；组件查询直接携带规则、证据和真值状态。
+- 新增 `IrInterface` 与 `list_interfaces`，覆盖 SWD/JTAG、UART、I²C、SPI/QSPI、CAN、USB、Ethernet、SDIO、I²S/SAI、模拟和 GPIO，并以实际导线候选阻止未接线复用功能误报。
+- 接口候选支持 `CANDIDATE/PARTIAL_CANDIDATE/UNRESOLVED`、DNP 默认排除、层级/Variant 作用域和规则版本绑定游标；工程版本差异同步覆盖组件语义及接口实体。
+- 真实工程私有清单契约升级为 1.3.0，增加匿名角色/接口矩阵及安装态 MCU 接口、DNP 接口排除调用。
 
 ### Changed
 
@@ -22,7 +26,7 @@
 
 ### Planned
 
-- 完成组件角色、接口、电源树、外部时钟树、复位/启动路径和 MCU 引脚资源模型；
+- 完成电源树、外部时钟树、复位/启动路径和 MCU 引脚资源模型；
 - 在不提交私有工程的前提下继续扩大格式回归覆盖。
 
 ## [0.1.0] - 2026-07-31

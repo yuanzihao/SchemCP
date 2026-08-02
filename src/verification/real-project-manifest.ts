@@ -1,10 +1,11 @@
 import path from "node:path";
+import type { IrComponentRole, IrInterfaceType } from "../ir/model.js";
 
 const SHA256_PATTERN = /^[a-f0-9]{64}$/;
 const SAMPLE_ID_PATTERN = /^real-[0-9]{2}$/;
 const BASELINE_ID_PATTERN = /^v[0-9]+\.[0-9]+-m[0-9]+(?:-[a-z0-9-]+)?$/;
 
-export const REAL_PROJECT_MANIFEST_SCHEMA_VERSION = "1.2.0" as const;
+export const REAL_PROJECT_MANIFEST_SCHEMA_VERSION = "1.3.0" as const;
 export const REAL_PROJECT_MANIFEST_LIMITS = {
   maxSamples: 32,
   maxPathLength: 4_096,
@@ -71,6 +72,68 @@ export interface RealProjectBusBaseline {
   readonly busEntriesUnbound: number;
 }
 
+export const REAL_PROJECT_COMPONENT_ROLES = [
+  "MCU_MPU",
+  "POWER_INPUT",
+  "LDO",
+  "DC_DC",
+  "REFERENCE_SOURCE",
+  "CRYSTAL_OSCILLATOR",
+  "MEMORY",
+  "TRANSCEIVER",
+  "CONNECTOR",
+  "PROTECTION_CANDIDATE",
+  "FILTER_CANDIDATE",
+  "RESET_SUPERVISOR",
+  "BOOT_STRAP",
+  "PASSIVE",
+  "UNKNOWN"
+] as const satisfies readonly IrComponentRole[];
+
+export const REAL_PROJECT_INTERFACE_TYPES = [
+  "SWD",
+  "JTAG",
+  "UART",
+  "I2C",
+  "SPI",
+  "QSPI",
+  "CAN",
+  "USB",
+  "ETHERNET",
+  "SDIO",
+  "I2S_SAI",
+  "ANALOG",
+  "GPIO_GROUP"
+] as const satisfies readonly IrInterfaceType[];
+
+export const REAL_PROJECT_INTERFACE_MATRIX_KEYS = [
+  "candidateActive",
+  "candidateExcludedDnp",
+  "candidateAssemblyUnknown",
+  "partialCandidateActive",
+  "partialCandidateExcludedDnp",
+  "partialCandidateAssemblyUnknown",
+  "unresolvedActive",
+  "unresolvedExcludedDnp",
+  "unresolvedAssemblyUnknown"
+] as const;
+
+export type RealProjectInterfaceMatrix = Readonly<
+  Record<(typeof REAL_PROJECT_INTERFACE_MATRIX_KEYS)[number], number>
+>;
+
+export interface RealProjectSemanticBaseline {
+  readonly componentSemantics: number;
+  readonly componentSemanticsUnknownRole: number;
+  readonly componentPowerDomainCandidates: number;
+  readonly roles: Readonly<Record<IrComponentRole, number>>;
+  readonly interfaces: number;
+  readonly interfacesByType: Readonly<
+    Record<IrInterfaceType, RealProjectInterfaceMatrix>
+  >;
+  readonly requiredMcuActiveInterfaceTypes?: readonly IrInterfaceType[];
+}
+
 export interface RealProjectSampleManifest {
   readonly sampleId: string;
   readonly projectPath: string;
@@ -85,6 +148,7 @@ export interface RealProjectSampleManifest {
   readonly hierarchyBaseline?: RealProjectHierarchyBaseline;
   readonly assemblyBaseline?: RealProjectAssemblyBaseline;
   readonly busBaseline?: RealProjectBusBaseline;
+  readonly semanticBaseline: RealProjectSemanticBaseline;
 }
 
 export interface RealProjectManifest {
@@ -92,6 +156,7 @@ export interface RealProjectManifest {
   readonly baselineId: string;
   readonly packageAcceptanceSampleId: string;
   readonly packageAssemblyAcceptanceSampleId: string;
+  readonly packageSemanticAcceptanceSampleId: string;
   readonly samples: readonly RealProjectSampleManifest[];
 }
 
@@ -432,6 +497,129 @@ function bus(value: unknown, field: string): RealProjectBusBaseline {
   return result;
 }
 
+function semantic(
+  value: unknown,
+  field: string
+): RealProjectSemanticBaseline {
+  const record = object(value, field);
+  exactKeys(
+    record,
+    [
+      "componentSemantics",
+      "componentSemanticsUnknownRole",
+      "componentPowerDomainCandidates",
+      "roles",
+      "interfaces",
+      "interfacesByType"
+    ],
+    ["requiredMcuActiveInterfaceTypes"],
+    field
+  );
+  const componentSemantics = count(
+    record.componentSemantics,
+    `${field}.componentSemantics`
+  );
+  const componentSemanticsUnknownRole = count(
+    record.componentSemanticsUnknownRole,
+    `${field}.componentSemanticsUnknownRole`
+  );
+  const componentPowerDomainCandidates = count(
+    record.componentPowerDomainCandidates,
+    `${field}.componentPowerDomainCandidates`
+  );
+  const rolesRecord = object(record.roles, `${field}.roles`);
+  exactKeys(rolesRecord, REAL_PROJECT_COMPONENT_ROLES, [], `${field}.roles`);
+  const roles = Object.fromEntries(
+    REAL_PROJECT_COMPONENT_ROLES.map((role) => [
+      role,
+      count(rolesRecord[role], `${field}.roles.${role}`)
+    ])
+  ) as unknown as Readonly<Record<IrComponentRole, number>>;
+  if (
+    Object.values(roles).reduce((total, value) => total + value, 0) !==
+      componentSemantics ||
+    roles.UNKNOWN !== componentSemanticsUnknownRole
+  ) {
+    invalid(`${field} 的组件角色计数不守恒`);
+  }
+
+  const interfaces = count(record.interfaces, `${field}.interfaces`);
+  const interfaceRecord = object(
+    record.interfacesByType,
+    `${field}.interfacesByType`
+  );
+  exactKeys(
+    interfaceRecord,
+    REAL_PROJECT_INTERFACE_TYPES,
+    [],
+    `${field}.interfacesByType`
+  );
+  const interfacesByType = Object.fromEntries(
+    REAL_PROJECT_INTERFACE_TYPES.map((type) => {
+      const matrixRecord = object(
+        interfaceRecord[type],
+        `${field}.interfacesByType.${type}`
+      );
+      exactKeys(
+        matrixRecord,
+        REAL_PROJECT_INTERFACE_MATRIX_KEYS,
+        [],
+        `${field}.interfacesByType.${type}`
+      );
+      const matrix = Object.fromEntries(
+        REAL_PROJECT_INTERFACE_MATRIX_KEYS.map((key) => [
+          key,
+          count(matrixRecord[key], `${field}.interfacesByType.${type}.${key}`)
+        ])
+      ) as unknown as RealProjectInterfaceMatrix;
+      return [type, matrix];
+    })
+  ) as unknown as Readonly<Record<IrInterfaceType, RealProjectInterfaceMatrix>>;
+  const interfaceTotal = Object.values(interfacesByType).reduce(
+    (total, matrix) =>
+      total + Object.values(matrix).reduce((sum, value) => sum + value, 0),
+    0
+  );
+  if (interfaceTotal !== interfaces) {
+    invalid(`${field} 的接口类型和状态计数不守恒`);
+  }
+
+  let requiredMcuActiveInterfaceTypes: readonly IrInterfaceType[] | undefined;
+  if (record.requiredMcuActiveInterfaceTypes !== undefined) {
+    if (!Array.isArray(record.requiredMcuActiveInterfaceTypes)) {
+      invalid(`${field}.requiredMcuActiveInterfaceTypes 必须是数组`);
+    }
+    requiredMcuActiveInterfaceTypes = record.requiredMcuActiveInterfaceTypes.map(
+      (value, index) => {
+        if (!REAL_PROJECT_INTERFACE_TYPES.includes(value as IrInterfaceType)) {
+          invalid(
+            `${field}.requiredMcuActiveInterfaceTypes[${index}] 不受支持`
+          );
+        }
+        return value as IrInterfaceType;
+      }
+    );
+    if (
+      requiredMcuActiveInterfaceTypes.length === 0 ||
+      new Set(requiredMcuActiveInterfaceTypes).size !==
+        requiredMcuActiveInterfaceTypes.length
+    ) {
+      invalid(`${field}.requiredMcuActiveInterfaceTypes 必须非空且无重复`);
+    }
+  }
+  return {
+    componentSemantics,
+    componentSemanticsUnknownRole,
+    componentPowerDomainCandidates,
+    roles,
+    interfaces,
+    interfacesByType,
+    ...(requiredMcuActiveInterfaceTypes === undefined
+      ? {}
+      : { requiredMcuActiveInterfaceTypes })
+  };
+}
+
 function sample(value: unknown, index: number): RealProjectSampleManifest {
   const field = `samples[${index}]`;
   const record = object(value, field);
@@ -444,7 +632,8 @@ function sample(value: unknown, index: number): RealProjectSampleManifest {
       "sourceSha256",
       "netlistSha256",
       "expectedDiagnostics",
-      "comparisonBaseline"
+      "comparisonBaseline",
+      "semanticBaseline"
     ],
     ["hierarchyBaseline", "assemblyBaseline", "busBaseline"],
     field
@@ -480,6 +669,10 @@ function sample(value: unknown, index: number): RealProjectSampleManifest {
       record.comparisonBaseline,
       `${field}.comparisonBaseline`
     ),
+    semanticBaseline: semantic(
+      record.semanticBaseline,
+      `${field}.semanticBaseline`
+    ),
     ...(record.hierarchyBaseline === undefined
       ? {}
       : {
@@ -513,6 +706,7 @@ export function parseRealProjectManifest(value: unknown): RealProjectManifest {
       "baselineId",
       "packageAcceptanceSampleId",
       "packageAssemblyAcceptanceSampleId",
+      "packageSemanticAcceptanceSampleId",
       "samples"
     ],
     [],
@@ -571,11 +765,29 @@ export function parseRealProjectManifest(value: unknown): RealProjectManifest {
   ) {
     invalid("packageAssemblyAcceptanceSampleId 必须引用含显式 DNP 的样本");
   }
+  const packageSemanticAcceptanceSampleId = string(
+    root.packageSemanticAcceptanceSampleId,
+    "packageSemanticAcceptanceSampleId"
+  );
+  const semanticAcceptance = samples.find(
+    (item) => item.sampleId === packageSemanticAcceptanceSampleId
+  );
+  if (
+    semanticAcceptance === undefined ||
+    semanticAcceptance.semanticBaseline.roles.MCU_MPU === 0 ||
+    semanticAcceptance.semanticBaseline.requiredMcuActiveInterfaceTypes ===
+      undefined
+  ) {
+    invalid(
+      "packageSemanticAcceptanceSampleId 必须引用含 MCU 和实际活动接口断言的样本"
+    );
+  }
   return {
     schemaVersion: REAL_PROJECT_MANIFEST_SCHEMA_VERSION,
     baselineId,
     packageAcceptanceSampleId,
     packageAssemblyAcceptanceSampleId,
+    packageSemanticAcceptanceSampleId,
     samples
   };
 }

@@ -44,6 +44,7 @@ export const MCP_TOOL_NAMES = [
   "list_variant_overrides",
   "list_explicit_nets",
   "list_buses",
+  "list_interfaces",
   "list_candidate_netlist_tuples",
   "list_candidate_netlist_exclusions",
   "list_network_endpoint_candidates",

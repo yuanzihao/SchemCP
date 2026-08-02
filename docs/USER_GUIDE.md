@@ -87,11 +87,14 @@ SchemCP 默认无工程启动。用户在对话中附加 `.epro2` 后，让模�
 3. `list_design_hierarchy`
 4. `list_components`
 5. `get_component` 与 `get_component_pins`
-6. `get_component_pin_connectivity`
+6. `list_interfaces`
+7. `get_component_pin_connectivity`
 
 `list_components` 可以使用 `assemblyStatus` 筛选 `POPULATED`、`DNP` 或 `UNKNOWN`，并使用 `pinCompletenessStatus` 筛选 `COMPLETE`、`PARTIAL` 或 `UNKNOWN`。`DNP` 只来自有效 `Add into BOM=no`；缺失、冲突、非法值或指定了尚未应用的 Variant 时都不会被猜成 DNP。
 
 `get_component_pins` 在逻辑器件完整性可证明时合并同位号多 `PART` 单元，包括分离电源单元。`display=false` 的引脚仍会返回；若 `display` 来源缺失、多单元缺失或同位号存在歧义，完整性会降级，调用方不得据此断言某个 MCU 引脚“未使用”。
+
+组件结果中的 `semantic` 是 `schemcp.semantic-rules/1` 产生的角色与页内电源域候选，必须结合 `evidenceClass`、`truthStatus`、`ruleId` 和来源理解。`list_interfaces` 只把实际接触导线的引脚纳入识别：未接线的 MCU 复用功能名不会被当成已使用接口；缺少必要信号时返回 `PARTIAL_CANDIDATE`，导线没有显式网络或存在冲突时返回 `UNRESOLVED`。默认只列出 `ACTIVE` 接口，DNP 排除证据需显式使用 `activityStatus=EXCLUDED_DNP` 查询。
 
 ## 4. 何时提供 `.enet`
 

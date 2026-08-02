@@ -6,8 +6,8 @@
 - 服务：`schemcp`
 - 包：`@yuanzihao/schemcp@0.1.0`
 - 运输：`stdio`
-- 工具数：`49`
-- JSON 快照 SHA-256：`89f9c8615e2c67e04e07aa538c912d8ae21f6279fa142acd3c19717c0a2997a1`
+- 工具数：`50`
+- JSON 快照 SHA-256：`45b8a5ca1858bac7ab974aadf8a36ec3249fcc3afd519919ea82e0067d31f131`
 
 每个工具的结果至少包含 `ok:boolean` 与平台安全能力状态；工具专用字段作为受版本化公共契约约束的扩展属性返回。失败时 `ok=false`，并返回稳定的 `error.code`。
 
@@ -2791,7 +2791,122 @@
 }
 ```
 
-## 43. `list_candidate_netlist_tuples`
+## 43. `list_interfaces`
+
+**分页列出接口候选**
+
+使用版本化确定性规则从显式引脚名称和网络候选识别 SWD/JTAG、UART、I²C、SPI/QSPI、CAN、USB、Ethernet、SDIO、I²S/SAI、模拟和 GPIO 接口。缺失规定信号只返回 PARTIAL_CANDIDATE；DNP 默认排除，可显式查询排除证据。
+
+输入 Schema：
+
+```json
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "properties": {
+    "activityStatus": {
+      "description": "装配活动筛选；默认仅 ACTIVE，ALL 同时返回 DNP 排除和装配未知证据",
+      "enum": [
+        "ACTIVE",
+        "EXCLUDED_DNP",
+        "ASSEMBLY_UNKNOWN",
+        "ALL"
+      ],
+      "type": "string"
+    },
+    "componentId": {
+      "description": "可选精确组件 ID",
+      "maxLength": 128,
+      "minLength": 1,
+      "type": "string"
+    },
+    "cursor": {
+      "description": "上一页返回的不透明 nextCursor；改变筛选条件后不可复用",
+      "minLength": 1,
+      "type": "string"
+    },
+    "instanceContextId": {
+      "description": "可选精确 INSTANCE 上下文 ID",
+      "maxLength": 128,
+      "minLength": 1,
+      "type": "string"
+    },
+    "limit": {
+      "description": "每页数量，默认 20，最大 50",
+      "maximum": 50,
+      "minimum": 1,
+      "type": "integer"
+    },
+    "pageId": {
+      "description": "可选精确原理图页 ID",
+      "maxLength": 128,
+      "minLength": 1,
+      "type": "string"
+    },
+    "projectHandle": {
+      "description": "可选工程句柄；省略时查询当前活动工程。句柄来自 open/list/get_active_schematic_project",
+      "maxLength": 96,
+      "minLength": 1,
+      "type": "string"
+    },
+    "status": {
+      "description": "可选接口识别状态",
+      "enum": [
+        "CANDIDATE",
+        "PARTIAL_CANDIDATE",
+        "UNRESOLVED"
+      ],
+      "type": "string"
+    },
+    "type": {
+      "description": "可选接口类型",
+      "enum": [
+        "SWD",
+        "JTAG",
+        "UART",
+        "I2C",
+        "SPI",
+        "QSPI",
+        "CAN",
+        "USB",
+        "ETHERNET",
+        "SDIO",
+        "I2S_SAI",
+        "ANALOG",
+        "GPIO_GROUP"
+      ],
+      "type": "string"
+    },
+    "variantId": {
+      "description": "可选当前工程 Variant ID；未应用 Variant 时接口活动状态保守为 ASSEMBLY_UNKNOWN",
+      "maxLength": 128,
+      "minLength": 1,
+      "type": "string"
+    }
+  },
+  "type": "object"
+}
+```
+
+结果 Schema：
+
+```json
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": {},
+  "properties": {
+    "ok": {
+      "description": "工具调用是否成功",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "ok"
+  ],
+  "type": "object"
+}
+```
+
+## 44. `list_candidate_netlist_tuples`
 
 **分页列出规范化候选网表元组**
 
@@ -2868,7 +2983,7 @@
 }
 ```
 
-## 44. `list_candidate_netlist_exclusions`
+## 45. `list_candidate_netlist_exclusions`
 
 **分页列出候选网表排除项**
 
@@ -2946,7 +3061,7 @@
 }
 ```
 
-## 45. `list_network_endpoint_candidates`
+## 46. `list_network_endpoint_candidates`
 
 **分页列出网络端点声明候选**
 
@@ -3024,7 +3139,7 @@
 }
 ```
 
-## 46. `list_short_relation_candidates`
+## 47. `list_short_relation_candidates`
 
 **分页列出 Short Symbol 关系候选**
 
@@ -3093,7 +3208,7 @@
 }
 ```
 
-## 47. `diff_project_versions`
+## 48. `diff_project_versions`
 
 **分页比较当前工程与基线工程**
 
@@ -3136,6 +3251,8 @@
         "COMPONENT_GROUP",
         "INSTANCE_CONTEXT",
         "COMPONENT",
+        "COMPONENT_SEMANTIC",
+        "INTERFACE",
         "SYMBOL",
         "SYMBOL_PART",
         "SYMBOL_TEXT",
@@ -3185,7 +3302,7 @@
 }
 ```
 
-## 48. `get_diagnostics`
+## 49. `get_diagnostics`
 
 **分页获取编译诊断**
 
@@ -3245,7 +3362,7 @@
 }
 ```
 
-## 49. `get_evidence`
+## 50. `get_evidence`
 
 **获取对象来源证据**
 

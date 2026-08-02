@@ -6,8 +6,10 @@ import type {
   IrBus,
   IrBusEntry,
   IrComponent,
+  IrComponentSemantic,
   IrComponentGroup,
   IrInstanceContext,
+  IrInterface,
   IrNetworkEndpointCandidate,
   IrRecordProvenance,
   IrSchematicAnnotation,
@@ -469,6 +471,8 @@ function fixture(): EdaIr {
     instanceContexts,
     componentOccurrences: [],
     components,
+    componentSemantics: [],
+    interfaces: [],
     symbols,
     symbolParts: [],
     symbolTexts: [],
@@ -554,6 +558,16 @@ function fixture(): EdaIr {
       componentsPinCompletenessComplete: components.length,
       componentsPinCompletenessPartial: 0,
       componentsPinCompletenessUnknown: 0,
+      componentSemantics: 0,
+      componentSemanticsUnknownRole: 0,
+      componentPowerDomainCandidates: 0,
+      interfaces: 0,
+      interfacesCandidate: 0,
+      interfacesPartialCandidate: 0,
+      interfacesUnresolved: 0,
+      interfacesActive: 0,
+      interfacesExcludedDnp: 0,
+      interfacesAssemblyUnknown: 0,
       componentsWithDesignator: components.length,
       componentsWithDevice: 0,
       componentsWithSymbol: components.length,
@@ -727,6 +741,114 @@ function occurrenceFixture(): EdaIr {
       instanceContextsResolved: 1,
       componentOccurrences: 1,
       componentOccurrencesAssemblyUnknown: 1
+    }
+  };
+}
+
+function semanticsFixture(): EdaIr {
+  const base = fixture();
+  const selected = base.components.find((item) => item.id === "component-1")!;
+  const second = base.components.find((item) => item.id === "component-2")!;
+  const semantic: IrComponentSemantic = {
+    id: "semantic-component-1",
+    componentId: selected.id,
+    pageId: selected.pageId,
+    logicalComponentId: selected.pinCompleteness.logicalComponentId,
+    unitComponentIds: [selected.id],
+    primaryRole: "MCU_MPU",
+    roles: [
+      {
+        role: "MCU_MPU",
+        ruleId: "component-role.mcu-mpu.identity.v1",
+        evidenceClass: "DETERMINISTIC_RULE",
+        truthStatus: "CANDIDATE",
+        semanticRuleSetVersion: "schemcp.semantic-rules/1",
+        provenance: [selected.provenance]
+      }
+    ],
+    powerDomains: [],
+    ruleId: "component.semantic.aggregate.v1",
+    evidenceClass: "DETERMINISTIC_RULE",
+    truthStatus: "CANDIDATE",
+    semanticRuleSetVersion: "schemcp.semantic-rules/1",
+    provenance: [selected.provenance]
+  };
+  const interfaceBase = {
+    group: "SWD",
+    signals: [
+      {
+        signal: "SWDIO",
+        pinInstanceIds: ["component-1:pin-1"],
+        pinNames: ["SWDIO"],
+        explicitNetNames: [],
+        provenance: [selected.provenance]
+      },
+      {
+        signal: "SWCLK",
+        pinInstanceIds: ["component-1:pin-2"],
+        pinNames: ["SWCLK"],
+        explicitNetNames: [],
+        provenance: [selected.provenance]
+      }
+    ],
+    requiredSignals: ["SWDIO", "SWCLK"],
+    missingSignals: [],
+    unresolvedReasons: [],
+    ruleId: "interface.swd.signal-set.v1",
+    evidenceClass: "DETERMINISTIC_RULE" as const,
+    truthStatus: "CANDIDATE" as const,
+    semanticRuleSetVersion: "schemcp.semantic-rules/1" as const,
+    provenance: [selected.provenance]
+  };
+  const interfaces: IrInterface[] = [
+    {
+      id: "interface-swd",
+      type: "SWD",
+      logicalComponentId: selected.pinCompleteness.logicalComponentId,
+      componentRefs: [{ componentId: selected.id, pageId: selected.pageId }],
+      status: "CANDIDATE",
+      activityStatus: "ACTIVE",
+      ...interfaceBase
+    },
+    {
+      id: "interface-usb-dnp",
+      type: "USB",
+      group: "USB:FS",
+      logicalComponentId: second.pinCompleteness.logicalComponentId,
+      componentRefs: [{ componentId: second.id, pageId: second.pageId }],
+      status: "PARTIAL_CANDIDATE",
+      activityStatus: "EXCLUDED_DNP",
+      signals: [
+        {
+          signal: "DP",
+          pinInstanceIds: ["component-2:pin-1"],
+          pinNames: ["USB_DP"],
+          explicitNetNames: [],
+          provenance: [second.provenance]
+        }
+      ],
+      requiredSignals: ["DP", "DM"],
+      missingSignals: ["DM"],
+      unresolvedReasons: [],
+      ruleId: "interface.usb.signal-set.v1",
+      evidenceClass: "DETERMINISTIC_RULE",
+      truthStatus: "CANDIDATE",
+      semanticRuleSetVersion: "schemcp.semantic-rules/1",
+      provenance: [second.provenance]
+    }
+  ];
+  return {
+    ...base,
+    componentSemantics: [semantic],
+    interfaces,
+    summary: {
+      ...base.summary,
+      componentSemantics: 1,
+      interfaces: 2,
+      interfacesCandidate: 1,
+      interfacesPartialCandidate: 1,
+      interfacesActive: 1,
+      interfacesExcludedDnp: 1
     }
   };
 }
@@ -1228,6 +1350,54 @@ test("组件查询公开 DNP 装配状态、完整性筛选并将 Variant 绑定
       index.listComponents({
         variantId: "variant-2",
         assemblyStatus: "UNKNOWN",
+        limit: 1,
+        cursor: selectedVariant.nextCursor
+      }),
+    (error: unknown) =>
+      error instanceof QueryError && error.code === "QUERY_INVALID_CURSOR"
+  );
+});
+
+test("组件详情公开版本化角色语义，接口默认排除 DNP 并绑定 Variant 游标域", () => {
+  const index = new EdaIrQueryIndex(semanticsFixture());
+  const component = index.getComponent({ componentId: "component-1" });
+  assert.equal(component.status, "FOUND");
+  if (component.status === "FOUND") {
+    assert.equal(component.component.semantic?.primaryRole, "MCU_MPU");
+    assert.equal(
+      component.component.semantic?.semanticRuleSetVersion,
+      "schemcp.semantic-rules/1"
+    );
+  }
+
+  const active = index.listInterfaces({ limit: 1 });
+  assert.equal(active.total, 1);
+  assert.equal(active.items[0]?.type, "SWD");
+  assert.equal(active.items[0]?.activityStatus, "ACTIVE");
+
+  const excluded = index.listInterfaces({
+    activityStatus: "EXCLUDED_DNP",
+    status: "PARTIAL_CANDIDATE"
+  });
+  assert.equal(excluded.total, 1);
+  assert.equal(excluded.items[0]?.type, "USB");
+
+  const selectedVariant = index.listInterfaces({
+    variantId: "variant-1",
+    activityStatus: "ALL",
+    limit: 1
+  });
+  assert.equal(selectedVariant.total, 2);
+  assert.equal(selectedVariant.items[0]?.status, "UNRESOLVED");
+  assert.equal(
+    selectedVariant.items[0]?.activityStatus,
+    "ASSEMBLY_UNKNOWN"
+  );
+  assert.throws(
+    () =>
+      index.listInterfaces({
+        variantId: "variant-2",
+        activityStatus: "ALL",
         limit: 1,
         cursor: selectedVariant.nextCursor
       }),

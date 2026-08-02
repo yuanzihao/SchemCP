@@ -4,10 +4,40 @@ import path from "node:path";
 import test from "node:test";
 import {
   parseRealProjectManifest,
+  REAL_PROJECT_COMPONENT_ROLES,
+  REAL_PROJECT_INTERFACE_MATRIX_KEYS,
+  REAL_PROJECT_INTERFACE_TYPES,
   RealProjectManifestError
 } from "../../src/verification/real-project-manifest.js";
 
 const HASH = "a".repeat(64);
+
+function semanticBaseline(): Readonly<Record<string, unknown>> {
+  return {
+    componentSemantics: 5,
+    componentSemanticsUnknownRole: 4,
+    componentPowerDomainCandidates: 2,
+    roles: Object.fromEntries(
+      REAL_PROJECT_COMPONENT_ROLES.map((role) => [
+        role,
+        role === "MCU_MPU" ? 1 : role === "UNKNOWN" ? 4 : 0
+      ])
+    ),
+    interfaces: 1,
+    interfacesByType: Object.fromEntries(
+      REAL_PROJECT_INTERFACE_TYPES.map((type) => [
+        type,
+        Object.fromEntries(
+          REAL_PROJECT_INTERFACE_MATRIX_KEYS.map((key) => [
+            key,
+            type === "SWD" && key === "candidateActive" ? 1 : 0
+          ])
+        )
+      ])
+    ),
+    requiredMcuActiveInterfaceTypes: ["SWD"]
+  };
+}
 
 function sample(sampleId: string): Readonly<Record<string, unknown>> {
   return {
@@ -28,6 +58,7 @@ function sample(sampleId: string): Readonly<Record<string, unknown>> {
       truthDuplicates: 0,
       excludedCandidatePins: 2
     },
+    semanticBaseline: semanticBaseline(),
     hierarchyBaseline: {
       instanceDocuments: 1,
       instanceContexts: 1,
@@ -75,17 +106,18 @@ function sample(sampleId: string): Readonly<Record<string, unknown>> {
 
 function manifest(): Readonly<Record<string, unknown>> {
   return {
-    schemaVersion: "1.2.0",
-    baselineId: "v0.2-m3",
+    schemaVersion: "1.3.0",
+    baselineId: "v0.2-m4",
     packageAcceptanceSampleId: "real-02",
     packageAssemblyAcceptanceSampleId: "real-01",
+    packageSemanticAcceptanceSampleId: "real-02",
     samples: [sample("real-02"), sample("real-01")]
   };
 }
 
 test("真实工程私有清单严格解析、排序并保留里程碑基线", () => {
   const parsed = parseRealProjectManifest(manifest());
-  assert.equal(parsed.baselineId, "v0.2-m3");
+  assert.equal(parsed.baselineId, "v0.2-m4");
   assert.deepEqual(
     parsed.samples.map((item) => item.sampleId),
     ["real-01", "real-02"]
@@ -95,6 +127,7 @@ test("真实工程私有清单严格解析、排序并保留里程碑基线", ()
     2
   );
   assert.equal(parsed.samples[0]?.busBaseline?.busEntries, 3);
+  assert.equal(parsed.samples[0]?.semanticBaseline.roles.MCU_MPU, 1);
 });
 
 test("真实工程清单拒绝未知字段、重复样本和不守恒计数", () => {
@@ -137,6 +170,22 @@ test("真实工程清单拒绝未知字段、重复样本和不守恒计数", ()
             busBaseline: {
               ...(broken.busBaseline as Record<string, unknown>),
               busEntriesSeparate: 2
+            }
+          }
+        ]
+      }),
+    (error: unknown) => error instanceof RealProjectManifestError
+  );
+  assert.throws(
+    () =>
+      parseRealProjectManifest({
+        ...manifest(),
+        samples: [
+          {
+            ...broken,
+            semanticBaseline: {
+              ...(broken.semanticBaseline as Record<string, unknown>),
+              interfaces: 2
             }
           }
         ]

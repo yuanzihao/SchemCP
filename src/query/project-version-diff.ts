@@ -25,6 +25,8 @@ export const PROJECT_DIFF_ENTITY_KINDS = [
   "COMPONENT_GROUP",
   "INSTANCE_CONTEXT",
   "COMPONENT",
+  "COMPONENT_SEMANTIC",
+  "INTERFACE",
   "SYMBOL",
   "SYMBOL_PART",
   "SYMBOL_TEXT",
@@ -330,6 +332,20 @@ function entitySources(ir: EdaIr): readonly EntitySource[] {
       entityId: item.id,
       parentId: item.pageId,
       label: boundedLabel(item.designator),
+      value: item
+    })),
+    ...ir.componentSemantics.map((item) => ({
+      entityKind: "COMPONENT_SEMANTIC" as const,
+      entityId: item.id,
+      parentId: `${item.pageId}\n${item.componentId}`,
+      label: boundedLabel(item.primaryRole),
+      value: item
+    })),
+    ...ir.interfaces.map((item) => ({
+      entityKind: "INTERFACE" as const,
+      entityId: item.id,
+      parentId: item.logicalComponentId,
+      label: boundedLabel(`${item.type}:${item.group}`),
       value: item
     })),
     ...ir.symbols.map((item) => ({
